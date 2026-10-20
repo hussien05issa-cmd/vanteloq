@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess } from "../../../../../../server/integrations/free-selection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
     const [actor] = await getDb().select({ userId: users.id, email: users.email, displayName: users.displayName, authSubject: users.authSubject, authProvider: users.authProvider, role: memberships.role, organizationId: memberships.organizationId, organization: workspaces }).from(users).innerJoin(memberships, and(eq(memberships.userId, users.id), eq(memberships.organizationId, stored.organizationId))).innerJoin(workspaces, eq(workspaces.id, memberships.organizationId)).where(and(eq(users.id, stored.actorUserId), eq(users.status, "active"), eq(memberships.status, "active"))).limit(1);
     if (!actor || (actor.role !== "owner" && actor.role !== "admin")) throw new ApiError(403, "SHOPIFY_INITIATOR_INELIGIBLE", "The account that started this connection can no longer manage integrations.");
     const context: AccessContext = { identity: { email: actor.email, displayName: actor.displayName, subject: actor.authSubject, provider: actor.authProvider ?? "sites", emailVerified: true, assuranceLevel: null, sessionId: null }, userId: actor.userId, organizationId: actor.organizationId, role: actor.role, authSubject: actor.authSubject, authProvider: actor.authProvider, organization: actor.organization };
+    await requireIntegrationCallbackAccess(context, provider, stored.connectionId);
     await requirePermission(context, "integrations.manage");
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(eq(integrationOAuthStates.stateHash, stored.stateHash), isNull(integrationOAuthStates.consumedAt), gt(integrationOAuthStates.expiresAt, now))).returning({ stateHash: integrationOAuthStates.stateHash });
     if (!consumed) throw new ApiError(400, "SHOPIFY_STATE_INVALID", "The Shopify connection attempt expired or was already used.");
@@ -48,7 +50,7 @@ export async function GET(request: Request) {
       return Response.redirect(returnUrl(request, provider, "connected"), 303);
     } catch (error) {
       await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, context.organizationId), eq(integrationSecrets.connectionId, connectionId)));
-      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", lastErrorCode: error instanceof ApiError ? error.code : "SHOPIFY_CONNECTION_FAILED", updatedAt: new Date() }).where(eq(integrationConnections.id, connectionId));
+      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", lastErrorCode: error instanceof ApiError ? error.code : "SHOPIFY_CONNECTION_FAILED", updatedAt: new Date() }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, provider), eq(integrationConnections.status, "pending")));
       await releaseShopifyStoreIfUnused(context.organizationId, shop);
       return Response.redirect(returnUrl(request, provider, "failed"), 303);
     }

@@ -6,8 +6,11 @@ import FinanceChart from "./finance-chart";
 import { formatBookloqMoney } from "../domain/bookloq-presentation";
 import { normalizeCollectionsPreferences, type CollectionsDashboard, type CollectionsPreferences, type CollectionKind, type CollectionBucket, type CollectionsFilter, type OpenCollectionRecord } from "../domain/collections-dashboard";
 import "./bookloq-collections.css";
+import { BookLoQCollectionsSkeleton } from "./bookloq-skeleton";
+import DecisionCardsPanel from "./decision-cards-panel";
+import type { DecisionCard } from "../domain/decision-cards";
 
-export type CollectionsPayload = { report: CollectionsDashboard; records: OpenCollectionRecord[]; total: number; page: number; pageSize: number; demonstration: boolean };
+export type CollectionsPayload = { report: CollectionsDashboard; records: OpenCollectionRecord[]; total: number; page: number; pageSize: number; demonstration: boolean; decisionCards?: DecisionCard[] };
 const labels: Record<CollectionBucket, string> = { current: "Not overdue", "1-30": "1–30 days", "31-60": "31–60 days", "61-90": "61–90 days", "91+": "91+ days", undated: "No due date" };
 const colours = ["#286ad6", "#568fc9", "#7368bc", "#a06594", "#bd5668", "#77869b"];
 const widgetNames = { schedule: "Due-Date Timeline", aging: "Balance Ageing", actions: "Actions & Opportunities" };
@@ -61,6 +64,13 @@ export default function BookloqCollections({ refreshKey, navigate, initialPayloa
   let offset = 0;
   const widget = (key: CollectionsPreferences["widgets"][number]["id"]) => {
     if (!report) return null;
+    if (key === "actions" && data?.decisionCards) {
+      const open = (card: DecisionCard) => {
+        if (card.kind === "bills_due") { setPreferences(p => ({ ...p, horizon: 7 })); inspect("payable", card.status === "unavailable" ? "all" : "due"); }
+        else inspect("receivable", card.status === "unavailable" ? "all" : "overdue");
+      };
+      return <DecisionCardsPanel key={key} title="What needs attention in your books?" cards={data.decisionCards} onEvidence={open} onAction={open}/>;
+    }
     if (key === "schedule") return <article key={key} className="bq-collection-panel bq-collection-schedule">
       <div className="bq-panel-heading"><div><span className="bq-collection-kicker">Plan the Next {report.horizon} Days</span><h3>Money Due In & Out</h3></div><button onClick={() => navigate("Cash Flow")}>Open Cash Plan ↗</button></div>
       <FinanceChart title="Due-Date Timeline" description="Bars show outstanding amounts due. The line tracks their cumulative difference, starting at zero." currency={report.currency} basisLabel="Due Dates" tableCaption="Outstanding document amounts grouped by due date. Cumulative difference starts at zero, not a bank balance or cash forecast." points={report.receivables.count + report.payables.count ? report.schedule.map(p => ({ label: date(p.from), detail: `${p.from} to ${p.to}`, values: [p.incomingCents, -p.outgoingCents, p.cumulativeCents] })) : []} series={[{ label: "Invoices Due", kind: "bar", color: "blue" }, { label: "Bills Due", kind: "bar", color: "coral" }, { label: "Cumulative Difference", kind: "line", color: "violet" }]} emptyMessage="Create an invoice or record a bill to see upcoming due dates."/>
@@ -83,7 +93,7 @@ export default function BookloqCollections({ refreshKey, navigate, initialPayloa
     {customize && <section className="bq-collection-customize" aria-label="Customise collections dashboard"><div><h3>Your Dashboard, Your Priorities</h3><p>Choose the cards, reading density and default planning horizon. Saved to your account.</p></div><div className="bq-customize-fields"><label>Planning Horizon<select value={draft.horizon} onChange={e => setDraft({ ...draft, horizon: Number(e.target.value) as 7 | 30 | 90 })}><option value="7">7 Days</option><option value="30">30 Days</option><option value="90">90 Days</option></select></label><label>Reading Density<select value={draft.density} onChange={e => setDraft({ ...draft, density: e.target.value as CollectionsPreferences["density"] })}><option value="comfortable">Comfortable</option><option value="compact">Compact</option></select></label></div>{draft.widgets.map((item, index) => <div className="bq-widget-choice" key={item.id}><label><input type="checkbox" checked={item.visible} onChange={e => setDraft({ ...draft, widgets: draft.widgets.map(w => w.id === item.id ? { ...w, visible: e.target.checked } : w) })}/>{widgetNames[item.id]}</label><button disabled={!index} aria-label={`Move ${widgetNames[item.id]} up`} onClick={() => { const items = [...draft.widgets]; [items[index - 1], items[index]] = [items[index], items[index - 1]]; setDraft({ ...draft, widgets: items }); }}>↑</button><button disabled={index === draft.widgets.length - 1} aria-label={`Move ${widgetNames[item.id]} down`} onClick={() => { const items = [...draft.widgets]; [items[index + 1], items[index]] = [items[index], items[index + 1]]; setDraft({ ...draft, widgets: items }); }}>↓</button></div>)}<div className="bq-collections-tools"><button onClick={() => setDraft(normalizeCollectionsPreferences(null))}>Restore Defaults</button><button className="bq-primary" disabled={saving} onClick={() => void save()}>{saving ? "Saving…" : "Save Layout"}</button></div></section>}
     {saveStatus && <p role="status" className="bq-collection-note">{saveStatus}</p>}
     {error && <div role="alert" className="bq-collection-error"><h3>Balances Are Unavailable</h3><p>{error}</p><button onClick={() => setReload(v => v + 1)}>Try Again</button></div>}
-    {!data && !error && <div className="bq-collections-skeleton" aria-label="Loading invoice and bill balances" aria-busy="true">{[1, 2, 3, 4].map(n => <span key={n}/>)}<div/></div>}
+    {!data && !error && <BookLoQCollectionsSkeleton widgets={preferences.widgets}/>}
     {report && <><div className="bq-collections-context"><span><i/>As of {date(report.asOf)} · {report.currency} · Current document balances{data?.demonstration ? " · Fictional demonstration" : ""}</span><div role="group" aria-label="Collections planning horizon">{([7, 30, 90] as const).map(days => <button key={days} aria-pressed={preferences.horizon === days} onClick={() => { setPreferences({ ...preferences, horizon: days }); setPage(0); }}>{days} Days</button>)}</div></div>
     <div className="bq-collection-kpis">{[
       { title: "Accounts Receivable", value: report.receivables.totalCents, note: `${report.receivables.count} open invoices · Owed to you`, kind: "receivable" as const, filter: "all" as const, icon: "↗" },

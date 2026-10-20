@@ -3,7 +3,7 @@ import { requireIntegrationRollout } from "../../../../../../server/integrations
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import {
   enforceRateLimit,
   handleApi,
@@ -24,7 +24,7 @@ import { requirePermission } from "../../../../../../server/permissions";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], "lightspeed", true);
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, LIGHTSPEED_PROVIDER);
     await enforceRateLimit("lightspeed:authorize", context.userId, 10, 3_600);
@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     const readiness = lightspeedReadiness();
     const authorizationUrl = buildLightspeedAuthorizationUrl(state);
     await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, "lightspeed"),
       id: connectionId,
       organizationId: context.organizationId,
       provider: LIGHTSPEED_PROVIDER,

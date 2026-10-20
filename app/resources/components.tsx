@@ -2,13 +2,15 @@ import type { ResourceArticle } from "./content";
 import { getCategory, getReadingTime } from "./content";
 import Link from "next/link";
 import ProductBrandLogo from "../product-brand-logo";
+import PublicSurface from "../public-surface";
+import { RESOURCE_EDITORIAL_COVERS } from "./editorial-covers";
 
 export function ResourceHeader() {
   return (
     <header className="resource-header">
       <Link className="resource-brand" href="/" aria-label="Vanteloq home">
         <ProductBrandLogo product="vanteloq" priority />
-        <span>Vanteloq<small>RESOURCES</small></span>
+        <span>Resources</span>
       </Link>
       <nav aria-label="Resource navigation">
         <Link href="/">Home</Link>
@@ -16,7 +18,7 @@ export function ResourceHeader() {
         <Link href="/resources/inventory">Inventory</Link>
         <Link href="/resources/analytics">Analytics</Link>
         <Link href="/resources/finance">Finance</Link>
-        <Link href="/resources/pos">POS</Link>
+        <Link href="/integrations">Integration guides</Link>
       </nav>
       <details className="resource-mobile-menu">
         <summary>Browse</summary>
@@ -26,13 +28,13 @@ export function ResourceHeader() {
           <Link href="/resources/inventory">Inventory</Link>
           <Link href="/resources/analytics">Analytics</Link>
           <Link href="/resources/finance">Finance</Link>
-          <Link href="/resources/pos">POS</Link>
-          <Link href="/?start=signup">Create workspace</Link>
+          <Link href="/integrations">Integration guides</Link>
+          <Link href="/?start=signup">Build your dashboard</Link>
         </nav>
       </details>
       <div className="resource-header-actions">
         <Link className="resource-header-signin" href="/?start=signin">Sign in</Link>
-        <Link className="resource-header-cta" href="/?start=signup">Create workspace</Link>
+        <Link className="resource-header-cta" href="/?start=signup">Build your dashboard</Link>
       </div>
     </header>
   );
@@ -44,12 +46,13 @@ export function ResourceFooter() {
       <div>
         <Link className="resource-brand" href="/" aria-label="Vanteloq home">
           <ProductBrandLogo product="vanteloq" />
-          <span>Vanteloq<small>BUSINESS OPERATING SYSTEM</small></span>
         </Link>
         <p>Practical operating guidance built around clear definitions, traceable inputs and human review.</p>
       </div>
       <nav aria-label="Footer navigation">
         <Link href="/resources">Resources</Link>
+        <Link href="/tools">Planning tools</Link>
+        <Link href="/about/editorial">Editorial standards</Link>
         <Link href="/#platform">Platform</Link>
         <Link href="/#connections">Connections</Link>
         <Link href="/privacy">Privacy</Link>
@@ -61,6 +64,11 @@ export function ResourceFooter() {
 }
 
 export function ResourceVisual({ category, compact = false }: { category: string; compact?: boolean }) {
+  const cover = RESOURCE_EDITORIAL_COVERS[category];
+  if (cover) return <div className={`resource-editorial-cover${compact ? " compact" : ""}`}>
+    {/* eslint-disable-next-line @next/next/no-img-element */}
+    <img src={cover.src} alt={cover.alt} width={cover.width} height={cover.height} loading={compact ? "lazy" : "eager"} decoding="async"/>
+  </div>;
   const labels: Record<string, string> = {
     inventory: "Inventory records and movement controls",
     finance: "Financial formulas and margin context",
@@ -85,18 +93,18 @@ export function ResourceVisual({ category, compact = false }: { category: string
       <span className="resource-visual-label">{shortLabels[category] ?? "VQL"}</span>
       <span className="resource-visual-bars" aria-hidden="true"><i/><i/><i/><i/></span>
       <span className="resource-visual-line" aria-hidden="true"><i/><i/><i/></span>
-      <span className="resource-visual-status" aria-hidden="true">SOURCE CHECKED</span>
+      <span className="resource-visual-status" aria-hidden="true">ILLUSTRATION</span>
     </div>
   );
 }
 
 export function ResourceShell({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <div className="resource-site">
+    <PublicSurface className="resource-site">
       <ResourceHeader />
       {children}
       <ResourceFooter />
-    </div>
+    </PublicSurface>
   );
 }
 

@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationLocationMappings, organizationLocations } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { fetchSquareLocations, SQUARE_PROVIDER } from "../../../../../../server/integrations/square";
 import { requireOwnedIntegrationConnection } from "../../../../../../server/integrations/connection";
@@ -17,7 +17,7 @@ async function list(organizationId: string, connectionId: string, accountName: s
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin", "manager"], "square", false);
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     const connection = await requireOwnedIntegrationConnection(context.organizationId, SQUARE_PROVIDER, new URL(request.url).searchParams.get("connection"), { connected: true });
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
     const input = await readJsonObject(request);
-    const context = await requireAccess(request, input.action === "discover" ? ["owner", "admin", "manager"] : ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, input.action === "discover" ? ["owner", "admin", "manager"] : ["owner", "admin"], "square", false);
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("square:location", context.userId, 60, 3600);

@@ -2,7 +2,7 @@ import { getD1 } from "../../../../db";
 import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
-import { buildInventoryWrites, confirmationCopy, eventKey, parsePaymentSettlement } from "../../../../server/operations";
+import { buildInventoryWrites, confirmationCopy, eventKey, operationsFeedWindow, parsePaymentSettlement } from "../../../../server/operations";
 import { requirePermission } from "../../../../server/permissions";
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { requireFeature } from "../../../../server/entitlements/engine";
@@ -28,7 +28,9 @@ export async function GET(request: Request) {
     const inventoryLocationClause = locationRefs === null ? "" : locationRefs.length
       ? ` AND location_ref IN (${placeholders})`
       : " AND 1 = 0";
-    const after = Math.max(0, Number.parseInt(url.searchParams.get("after") || "0", 10) || 0);
+    const { scopeFingerprint, after } = await operationsFeedWindow({ organizationId: context.organizationId,
+      accessibleLocationIds: scope.locations.map(location => location.id), selectedLocationId: scope.selectedLocationId,
+      locationIds: scope.locationIds, locationRefs }, url.searchParams.get("scope"), Number.parseInt(url.searchParams.get("after") || "0", 10));
     const database = getD1();
     type RawEvent = { id: string; eventType: string; aggregateType: string; aggregateId: string; sourceSystem: string; payloadJson: string; occurredAt: number; recordedAt: number };
     type RawMessage = { id: string; channel: string; recipient: string; subject: string; status: string; attemptCount: number; createdAt: number; updatedAt: number; payloadJson: string };
@@ -97,7 +99,7 @@ export async function GET(request: Request) {
     }));
     const inventory = inventoryResult.results ?? [];
     const cursor = rawEvents.reduce((maximum, row) => Math.max(maximum, Number(row.recordedAt)), after);
-    return jsonResponse({ cursor, events, messages, inventory });
+    return jsonResponse({ scopeFingerprint, cursor, events, messages, inventory });
   });
 }
 

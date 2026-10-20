@@ -37,6 +37,9 @@ async function applyMigrations(database) {
 }
 
 test("R-Series completes a browser callback using the initiating one-time state", async () => {
+  // Keep recorded sales inside the rolling command-centre period as dates advance.
+  const fictionalSalesDate = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+  const fictionalWarningDate = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
   const authServer = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "application/json" });
     response.end(JSON.stringify({
@@ -127,6 +130,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     let failShopVerification = false;
     let failOptionalVendorRead = false;
     let injectSyncWarning = false;
+    let recoveredSaleVersion = false;
     let emptyCatalogPage = false;
     let catalogSince = null;
     const mockLightspeedFetch = async (input, init) => {
@@ -149,9 +153,9 @@ test("R-Series completes a browser callback using the initiating one-time state"
         return Response.json({
           Sale: [
             {
-              saleID: "sale-100", timeStamp: injectSyncWarning ? "2026-08-10T16:00:00Z" : "2026-08-09T16:00:00Z", completeTime: "2026-08-09T15:58:00-06:00",
+              saleID: "sale-100", timeStamp: recoveredSaleVersion ? `${fictionalWarningDate}T17:00:00Z` : `${injectSyncWarning ? fictionalWarningDate : fictionalSalesDate}T16:00:00Z`, completeTime: `${fictionalSalesDate}T15:58:00-06:00`,
               completed: "true", voided: "false", shopID: "1", total: injectSyncWarning ? "205.00" : "105.00", taxTotal: "5.00",
-              calcFIFOCost: injectSyncWarning ? "80.00" : "40.00", calcDiscount: "2.00", SaleLines: { SaleLine: [{ saleLineID: "line-1" }, { saleLineID: "line-2" }] },
+              calcFIFOCost: injectSyncWarning ? "80.00" : "40.00", calcDiscount: "2.00", SaleLines: { SaleLine: [{ saleLineID: "line-1", unitQuantity: "1" }, { saleLineID: "line-2", unitQuantity: "1" }] },
               SalePayments: { SalePayment: [{ salePaymentID: "payment-1", paymentTypeID: "card-1", amount: "105.00" }] },
             },
             ...(injectSyncWarning ? [{ completed: "true", total: "999.00" }] : []),
@@ -403,7 +407,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
     }), environment, context);
     assert.equal(reviewedSync.status, 200, await reviewedSync.clone().text());
     const reviewedSyncBody = await reviewedSync.json();
-    assert.equal(reviewedSyncBody.run.warningCount, 0);
+    assert.equal(reviewedSyncBody.run.warningCount, 0, "Embedded quantities and retained line costs establish this fictional sale's review coverage.");
     assert.deepEqual(reviewedSyncBody.imported, {
       dailyMetrics: 0,
       inventoryBalances: 1,
@@ -579,7 +583,7 @@ test("R-Series completes a browser callback using the initiating one-time state"
       FROM daily_business_metrics
     `).first();
     assert.deepEqual(metric, {
-      business_date: "2026-08-09", location_ref: `lightspeed-r:${connection.id}:1`, gross_sales_cents: 10_200,
+      business_date: fictionalSalesDate, location_ref: `lightspeed-r:${connection.id}:1`, gross_sales_cents: 10_200,
       net_sales_cents: 10_000, cost_of_goods_cents: 4_000, transaction_count: 1,
       units_sold: 2, refunds_cents: 0, discounts_cents: 200,
     });
@@ -614,6 +618,14 @@ test("R-Series completes a browser callback using the initiating one-time state"
       FROM daily_business_metrics WHERE source_connection_id = ?
     `).bind(connection.id).first(), metric);
     failOptionalVendorRead = false;
+
+    const verifiedCommand = await worker.fetch(new Request(`${origin}/api/v1/command-centre`, { headers: ownerHeaders() }), environment, context);
+    assert.equal(verifiedCommand.status, 200);
+    const verifiedCommandBody = await verifiedCommand.json();
+    assert.equal(verifiedCommandBody.commandCentre.ready, true, JSON.stringify({ source: verifiedCommandBody.commandCentre.source,
+      liveSource: verifiedCommandBody.commandCentre.liveSource, dataQuality: verifiedCommandBody.commandCentre.dataQuality,
+      publication: await database.prepare("SELECT last_sync_cursor,sync_version,data_promotion_status FROM integration_connections WHERE id=?").bind(connection.id).first() }));
+    assert.equal(verifiedCommandBody.commandCentre.source.rowCount, 1);
 
     const beforeWarning = await database.prepare(`
       SELECT data_promotion_status dataPromotionStatus,
@@ -662,8 +674,14 @@ test("R-Series completes a browser callback using the initiating one-time state"
     }), environment, context);
     assert.equal(command.status, 200);
     const commandBody = await command.json();
-    assert.equal(commandBody.commandCentre.ready, true);
-    assert.equal(commandBody.commandCentre.source.rowCount, 1);
+    assert.equal(commandBody.commandCentre.ready, false, "A newer warning run invalidates the publication revision even while saved canonical records remain intact.");
+    assert.equal(commandBody.commandCentre.source.rowCount, 0);
+    recoveredSaleVersion = true;
+    const recoveredSync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, {
+      method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }),
+    }), environment, context);
+    assert.equal(recoveredSync.status, 200, await recoveredSync.clone().text());
+    assert.equal((await recoveredSync.json()).publishedCanonical, true, "A clean corrected source version restores the publication proof before further account tests.");
 
     const inventory = await worker.fetch(new Request(`${origin}/api/v1/inventory-lifecycle`, {
       headers: ownerHeaders(),
@@ -771,10 +789,14 @@ test("R-Series completes a browser callback using the initiating one-time state"
     const historyRun = await database.prepare("SELECT id FROM integration_sync_runs WHERE connection_id=? AND status='completed' ORDER BY completed_at DESC LIMIT 1").bind(connection.id).first();
     for (let start = 0; start < 150; start += 50) await database.batch(Array.from({ length: 50 }, (_, offset) => {
       const index = start + offset, date = new Date(Date.UTC(2024, 0, 1 + index)).toISOString().slice(0, 10);
-      return database.prepare(`INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,tax_cents,cost_cents,discount_cents,line_count,source_payload_hash,sync_run_id,staged_at)
-        VALUES (?,?,'lightspeed-r',?,?,'1',?,?,'completed',100,0,40,0,0,'history-fixture',?,?)`)
-        .bind(`history-${index}`, connection.organization_id, connection.id, `${connection.id}:history-${index}`, `${connection.id}:1`, `${date}T12:00:00-07:00`, historyRun.id, Date.now());
-    }));
+      const saleId = `${connection.id}:history-${index}`, soldAt = `${date}T12:00:00-07:00`;
+      return [database.prepare(`INSERT INTO integration_staged_sales (id,organization_id,provider,connection_id,external_sale_id,external_version,outlet_ref,sold_at,state,total_cents,tax_cents,cost_cents,discount_cents,line_count,units_milli,source_payload_hash,sync_run_id,staged_at)
+        VALUES (?,?,'lightspeed-r',?,?,'1',?,?,'completed',100,0,40,0,1,1000,'history-fixture',?,?)`)
+        .bind(`history-${index}`, connection.organization_id, connection.id, saleId, `${connection.id}:1`, soldAt, historyRun.id, Date.now()),
+        database.prepare(`INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,product_ref,outlet_ref,sold_at,sku,product_name,quantity_milli,net_sales_cents,cost_cents,cost_known,discount_cents,source_payload_hash,sync_run_id,updated_at)
+          VALUES (?,?,'lightspeed-r',?,?,?,?,?,?,'CRE-A','Fictional historical item',1000,100,40,1,0,'history-line-fixture',?,?)`)
+          .bind(`history-line-${index}`, connection.organization_id, connection.id, saleId, `${saleId}:line`, `${connection.id}:item-1`, `${connection.id}:1`, soldAt, historyRun.id, Date.now())];
+    }).flat());
     const historySync = await worker.fetch(new Request(`${origin}/api/v1/integrations/lightspeed-r/sync`, { method: "POST", headers: ownerHeaders(true), body: JSON.stringify({ reason: "manual", connectionId: connection.id }) }), environment, context);
     assert.equal(historySync.status, 200, await historySync.clone().text());
     assert.equal((await historySync.json()).dataPromotionEnabled, true);

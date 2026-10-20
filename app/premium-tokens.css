@@ -1,0 +1,34 @@
+/* Shared presentation tokens. Public branding and logo assets stay unchanged. */
+:root {
+  --premium-canvas: #020203;
+  --premium-panel: #07090D;
+  --premium-raised: #0B0F17;
+  --premium-input: #0D111A;
+  --premium-ink: #F7F9FC;
+  --premium-secondary: #A9B2C3;
+  --premium-muted: #7D8798;
+  --premium-blue: #2F6BFF;
+  --premium-hover: #4C82FF;
+  --premium-success: #6EE7AD;
+  --premium-error: #FF9D9D;
+  --premium-border: rgb(255 255 255 / 10%);
+  --premium-border-strong: rgb(255 255 255 / 18%);
+  --premium-font: "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --premium-duration: 160ms;
+  --premium-radius: 24px;
+  /* Product roles, separate from the public hero's responsive display type. */
+  --premium-type-title: clamp(28px, 2vw, 32px);
+  --premium-type-section: 18px;
+  --premium-type-body: 15px;
+  --premium-type-control: 14px;
+  --premium-type-meta: 12px;
+  --premium-space-1: 4px;
+  --premium-space-2: 8px;
+  --premium-space-3: 12px;
+  --premium-space-4: 16px;
+  --premium-space-5: 20px;
+  --premium-space-6: 24px;
+  --premium-radius-control: 12px;
+  --premium-radius-panel: 20px;
+  --premium-icon-size: 20px;
+}

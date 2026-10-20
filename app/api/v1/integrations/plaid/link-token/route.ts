@@ -1,9 +1,8 @@
 import { requireProviderPrivacy } from "../../../../../../server/integrations/provider-privacy";
 import { requireIntegrationRollout } from "../../../../../../server/integrations/rollout-access";
-import { requireAccess } from "../../../../../../server/authorization";
+import { integrationGrantId, requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAddon } from "../../../../../../server/entitlements/engine";
 import { createPlaidLinkToken, plaidReadiness } from "../../../../../../server/integrations/plaid";
 import { requireOrganizationWideLocationAccess } from "../../../../../../server/location-access";
 import { requirePermission } from "../../../../../../server/permissions";
@@ -12,8 +11,7 @@ import { recordPlaidConsent } from "../../../../../../server/privacy";
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin", "manager"], "bookloq.reconciliation");
-    await requireAddon(context, "bookloq");
+    const context = await requireIntegrationAccess(request, ["owner", "admin", "manager"], "plaid", true);
     await requirePermission(context, "finance.connections");
     await requireOrganizationWideLocationAccess(context);
     await requireIntegrationRollout(context, "plaid");
@@ -53,6 +51,7 @@ export async function POST(request: Request) {
       expiration: token.expiration,
       consentRecordId: consent.id,
       environment: plaidReadiness().mode,
+      freeGrantId: await integrationGrantId(context, "plaid"),
       mode,
     });
   });

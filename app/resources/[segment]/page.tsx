@@ -1,3 +1,5 @@
+import ProfessorGuide from "../../professor-guide";
+import { ADVISORY_RESOURCE_ARTICLES } from "../advisory-articles";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -12,7 +14,8 @@ import {
   getReadingTime,
   type ResourceArticle,
 } from "../content";
-import { absoluteUrl, DEFAULT_SOCIAL_IMAGE, safeJsonLd } from "../../seo";
+import { absoluteUrl, safeJsonLd } from "../../seo";
+import { articleSearchImage, resourceCollectionJsonLd, RESOURCE_SEARCH_ROBOTS } from "../search";
 
 type SegmentProps = { params: Promise<{ segment: string }> };
 
@@ -28,17 +31,14 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
   const article = getArticle(segment);
   if (article) {
     const url = `/resources/${article.slug}`;
-    const socialImage = article.hero ?? {
-      src: DEFAULT_SOCIAL_IMAGE,
-      alt: "Vanteloq business operating view",
-      width: 1487,
-      height: 1058,
-    };
+    const authorUrl = articleAuthorUrl(article);
+    const socialImage = articleSearchImage(article);
     return {
       title: article.seoTitle,
       description: article.description,
-      authors: [{ name: article.author }],
+      authors: [{ name: article.author, url: authorUrl }],
       alternates: { canonical: url },
+      robots: RESOURCE_SEARCH_ROBOTS,
       openGraph: {
         type: "article",
         url,
@@ -46,7 +46,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
         description: article.description,
         publishedTime: article.published,
         modifiedTime: article.updated,
-        authors: [article.author],
+        authors: [authorUrl],
         section: getCategory(article.category)?.name,
         images: [{ url: socialImage.src, width: socialImage.width, height: socialImage.height, alt: socialImage.alt }],
       },
@@ -66,6 +66,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
       title,
       description: category.description,
       alternates: { canonical: `/resources/${category.slug}` },
+      robots: getArticlesByCategory(category.slug).length === 0 ? { index: false, follow: true } : RESOURCE_SEARCH_ROBOTS,
       openGraph: { type: "website", url: `/resources/${category.slug}`, title, description: category.description },
       twitter: { card: "summary", title, description: category.description },
     };
@@ -91,6 +92,9 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
   const category = getCategory(article.category);
   const related = article.related.map(getArticle).filter((item): item is ResourceArticle => Boolean(item));
   const articleUrl = absoluteUrl(`/resources/${article.slug}`);
+  const authorUrl = articleAuthorUrl(article);
+  const searchImage = articleSearchImage(article);
+  const isAdvisoryGuide = ADVISORY_RESOURCE_ARTICLES.some((item) => item.slug === article.slug);
   const articleJsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -101,8 +105,13 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
     datePublished: article.published,
     dateModified: article.updated,
     articleSection: category?.name,
-    image: absoluteUrl(article.hero?.src ?? DEFAULT_SOCIAL_IMAGE),
-    author: { "@type": "Organization", name: article.author },
+    image: { "@type": "ImageObject", url: absoluteUrl(searchImage.src), width: searchImage.width, height: searchImage.height },
+    inLanguage: "en-CA",
+    isAccessibleForFree: true,
+    isPartOf: { "@id": absoluteUrl("/resources#webpage") },
+    author: article.author === "Hussien Issa"
+      ? { "@type": "Person", name: article.author, url: authorUrl }
+      : { "@type": "Organization", name: article.author, url: authorUrl },
     publisher: { "@id": `${absoluteUrl()}#organization` },
   };
   const breadcrumbs = breadcrumbJsonLd([
@@ -129,7 +138,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
               <h1>{article.title}</h1>
               <p className="article-dek">{article.dek}</p>
               <dl className="article-byline">
-                <div><dt>Written by</dt><dd>{article.author}</dd></div>
+                <div><dt>Written by</dt><dd><Link href={article.author === "Hussien Issa" ? "/advisory#team" : "/about/editorial"}>{article.author}</Link></dd></div>
                 <div><dt>Published</dt><dd><time dateTime={article.published}>{formatDate(article.published)}</time></dd></div>
                 <div><dt>Updated</dt><dd><time dateTime={article.updated}>{formatDate(article.updated)}</time></dd></div>
                 <div><dt>Reading time</dt><dd>{getReadingTime(article)} minutes</dd></div>
@@ -150,6 +159,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
                 <p>{article.quickAnswer}</p>
               </section>
 
+              <ProfessorGuide summary={article.quickAnswer}/>
               {article.sections.map((section) => (
                 <section id={section.id} key={section.id}>
                   <h2>{section.heading}</h2>
@@ -164,24 +174,34 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
 
               <section className="article-sources" aria-labelledby="sources">
                 <h2 id="sources">Sources and further reading</h2>
-                <p>These sources support the accounting, platform or technical boundaries discussed in this guide. They are not endorsements of Vanteloq.</p>
+                <p>These sources support the operational, financial, platform or technical boundaries discussed in this guide. They are not endorsements of Vanteloq.</p>
                 <ul>{article.sources.map((source) => <li key={source.url}><a href={source.url} rel="noreferrer" target="_blank">{source.title}</a><span>{source.publisher}</span></li>)}</ul>
               </section>
 
               <aside className="article-disclaimer">
                 <strong>Editorial note</strong>
                 <p>This guide is general operational information, not accounting, tax or legal advice. Definitions and obligations can vary by business, jurisdiction and reporting policy.</p>
+                <Link href="/about/editorial">How we prepare and update guides</Link>
               </aside>
+              {article.slug === "dealership-inventory-aging-carrying-costs" && <nav className="article-sources" aria-label="Apply the dealership guide"><h2>Apply the method</h2><ul><li><Link href="/tools/vehicle-holding-cost">Estimate vehicle holding costs with your own assumptions</Link></li><li><Link href="/solutions/dealerships">Explore Vanteloq for dealership operations</Link></li></ul></nav>}
+              {article.slug === "cafe-recipe-cost-margin-food-waste" && <nav className="article-sources" aria-label="Apply the café guide"><h2>Apply the method</h2><ul><li><Link href="/solutions/cafes">Explore café recipe, purchasing and waste workflows</Link></li><li><Link href="/solutions/restaurants">Explore restaurant operating workflows</Link></li></ul></nav>}
+              {article.slug === "retail-inventory-turnover-cash-flow" && <nav className="article-sources" aria-label="Apply the stock and cash guide"><h2>Apply the method</h2><ul><li><Link href="/tools/cash-order-planner">Compare a proposed stock order with a cash planning scenario</Link></li><li><Link href="/solutions/retail">Explore Vanteloq for independent retail</Link></li></ul></nav>}
             </div>
           </div>
         </article>
 
         {related.length > 0 && <section className="related-guides"><div className="resource-section-heading"><p className="resource-eyebrow">KEEP READING</p><h2>Related guides</h2></div><div className="resource-card-grid">{related.map((item) => <ArticleCard article={item} key={item.slug} />)}</div></section>}
 
-        <section className="resource-wide-cta article-cta">
+        {article.slug === "business-consulting-vs-business-software" ? <section className="resource-wide-cta article-cta">
+          <div><p className="resource-eyebrow">CHOOSE THE SUPPORT THAT FITS</p><h2>Start with the problem, then choose the path.</h2><p>Use Advisory for a focused business question, Workspace for repeatable operating work, or combine them when the change needs both.</p></div>
+          <div><Link href="/advisory#contact">Talk to an Advisor</Link><Link className="secondary" href="/how-it-works">Explore Workspace</Link></div>
+        </section> : isAdvisoryGuide ? <section className="resource-wide-cta article-cta">
+          <div><p className="resource-eyebrow">APPLY THE GUIDE</p><h2>Turn the next decision into a practical operating step.</h2><p>Use Vanteloq Advisory to clarify the problem and implementation path, or Vanteloq Workspace to keep approved inputs, decisions, responsibilities and follow-up work connected.</p></div>
+          <div><Link href="/advisory#contact">Talk to an Advisor</Link><Link className="secondary" href="/how-it-works">Explore Workspace</Link></div>
+        </section> : <section className="resource-wide-cta article-cta">
           <div><p className="resource-eyebrow">FROM GUIDE TO OPERATING RHYTHM</p><h2>Keep the source and the decision together.</h2><p>Vanteloq organizes verified operating inputs, calculation context and approval-owned actions in one business view.</p></div>
-          <div><Link href="/?start=signup">Create your workspace</Link><Link className="secondary" href="/#platform">Explore Vanteloq</Link></div>
-        </section>
+          <div><Link href="/?start=signup">Build your dashboard</Link><Link className="secondary" href="/#platform">Explore Vanteloq</Link></div>
+        </section>}
       </main>
     </ResourceShell>
   );
@@ -195,8 +215,9 @@ function ArticleHero({ article }: { article: ResourceArticle }) {
       className={`resource-visual visual-${article.category}`}
       style={{ aspectRatio: `${article.hero.width} / ${article.hero.height}`, display: "block", minHeight: 0, padding: 0 }}
     >
-      {/* The pre-compressed WebP is served directly because this Worker runtime has no image transformation binding. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {/* Lossless delivery uses the unchanged original as fallback. No runtime transformation binding is needed. */}
+      <picture style={{ display: "block", height: "100%", width: "100%" }}>
+      {article.hero.webpSrc && <source type="image/webp" srcSet={article.hero.webpSrc}/>}
       <img
         src={article.hero.src}
         alt={article.hero.alt}
@@ -207,6 +228,7 @@ function ArticleHero({ article }: { article: ResourceArticle }) {
         fetchPriority="high"
         style={{ display: "block", height: "100%", objectFit: "cover", position: "relative", width: "100%", zIndex: 1 }}
       />
+      </picture>
     </div>
   );
 }
@@ -224,6 +246,7 @@ function CategoryPage({ categorySlug }: { categorySlug: string }) {
     <ResourceShell>
       <main>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbs) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(resourceCollectionJsonLd(`/resources/${category.slug}`, category.seoTitle, category.description, categoryArticles)) }} />
         <section className="category-hero">
           <Breadcrumbs items={[{ label: "Resources", href: "/resources" }, { label: category.name }]} />
           <div className="category-hero-copy"><p className="resource-eyebrow">RESOURCE TOPIC</p><h1>{category.name}</h1><p>{category.description}</p></div>
@@ -248,4 +271,8 @@ export default async function ResourceSegmentPage({ params }: SegmentProps) {
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("en-CA", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }).format(new Date(`${value}T00:00:00Z`));
+}
+
+function articleAuthorUrl(article: ResourceArticle) {
+  return absoluteUrl(article.author === "Hussien Issa" ? "/advisory#team" : "/about/editorial");
 }

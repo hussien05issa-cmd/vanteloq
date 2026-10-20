@@ -1,6 +1,8 @@
+import { loadReconciledCashScenario } from "../../../../server/cash-planning";
+import { buildDatedCashObligations, datedPurchasingCapacity } from "../../../../domain/dated-cash-obligations";
 import { businessTimestampRange, businessTimestampExtrema, businessDatesFromExtrema, type TimestampExtrema } from "../../../../domain/business-period";
 import { businessClock } from "../../../../domain/intraday-sales";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../../../db";
 import {
   bankAccounts,
@@ -18,7 +20,6 @@ import {
 import {
   allocatePurchasingCapacity,
   assessPurchasingProduct,
-  calculateOpenPurchasingObligations,
   calculateVerifiedPurchasingCapacity,
   verifiedCashSourceEligible,
 } from "../../../../domain/purchasing-intelligence";
@@ -126,6 +127,7 @@ type ProcurementLocationScope = {
 
 type PurchasingVisibility = {
   cashDetails: boolean;
+  statementCashDetails?: boolean;
   financeCalendar: boolean;
   costDetails: boolean;
 };
@@ -167,7 +169,7 @@ async function requestLocationScope(request: Request, context: AccessContext): P
   };
 }
 
-async function verifiedCashContext(organizationId: string) {
+async function verifiedCashContext(organizationId: string, statementCashDetails = false) {
   const database = getDb();
   const [settings, accounts, bills, orders] = await Promise.all([
     database.select({
@@ -190,6 +192,7 @@ async function verifiedCashContext(organizationId: string) {
       approvedBankSource(bankAccounts.organizationId, bankAccounts.provider, bankAccounts.externalItemRef),
     )),
     database.select({
+      id:supplierBills.id, billNumber:supplierBills.billNumber, supplierName:sql<string>`'Supplier'`, dueDate:supplierBills.dueDate, approvalStatus:supplierBills.approvalStatus,
       status: supplierBills.status,
       totalCents: supplierBills.totalCents,
       paidCents: supplierBills.paidCents,
@@ -199,14 +202,19 @@ async function verifiedCashContext(organizationId: string) {
     }).from(supplierBills).where(eq(supplierBills.organizationId, organizationId)),
     database.select({
       id: purchaseOrders.id,
-      orderNumber: purchaseOrders.orderNumber,
+      orderNumber: purchaseOrders.orderNumber, supplierName:purchaseOrders.supplierName, committedCashDate:purchaseOrders.committedCashDate, expectedDeliveryDate:purchaseOrders.expectedDeliveryDate,
       status: purchaseOrders.status,
       currency: purchaseOrders.currency,
       totalCents: purchaseOrders.totalCents,
     }).from(purchaseOrders).where(eq(purchaseOrders.organizationId, organizationId)),
   ]);
   const baseCurrency = (settings[0]?.baseCurrency || "CAD").toUpperCase();
-  const obligations = calculateOpenPurchasingObligations({ baseCurrency, bills, orders });
+  const workspace=await getD1().prepare("SELECT timezone FROM workspaces WHERE id=?").bind(organizationId).first<{timezone:string}>();
+  if(!workspace?.timezone)throw new ApiError(409,"CASH_PLANNING_TIMEZONE","Review the business timezone before cash planning.");
+  const clock=businessClock(new Date(),workspace.timezone);
+  if(!clock)throw new ApiError(409,"CASH_PLANNING_TIMEZONE","Review the business timezone before cash planning.");
+  const asOf=clock.date;
+  const obligations=buildDatedCashObligations({baseCurrency,asOf,bills,orders,invoices:[]});
   const bookloq = settings[0];
   const result = calculateVerifiedPurchasingCapacity({
     connectionVerified: verifiedCashSourceEligible({
@@ -222,36 +230,35 @@ async function verifiedCashContext(organizationId: string) {
     maximumAgeMs: 48 * 60 * 60 * 1000,
     baseCurrency,
     cashSafetyReserveCents: settings[0]?.cashSafetyThresholdCents ?? 0,
-    outstandingBillsCents: obligations.outstandingBillsCents,
-    openPurchaseCommitmentsCents: obligations.openPurchaseCommitmentsCents,
+    outstandingBillsCents: obligations.exposureCents,
+    openPurchaseCommitmentsCents: 0,
     accounts: accounts.map((account) => ({
       ...account,
       lastSyncAtMs: account.lastSyncAt?.getTime() ?? null,
     })),
   });
-  const currencyReviewRequired = obligations.excludedCurrencyObligations > 0;
-  const guardedResult = currencyReviewRequired && result.status === "available"
-    ? { ...result, status: "needs_currency_review" as const, verifiedPurchasingCapacityCents: null }
-    : result;
-  return {
-    ...guardedResult,
-    excludedCurrencyObligations: obligations.excludedCurrencyObligations,
-    explanation: currencyReviewRequired
-      ? "Open obligations in another currency require a verified conversion or finance review before cash can constrain reorder quantities."
-      : guardedResult.status === "available"
-      ? "Available cash from fresh, healthy Plaid depository accounts minus the BookLoQ reserve, open supplier bills and open approved purchase commitments. Credit availability and other currencies are excluded."
-      : guardedResult.status === "stale_bank_data"
-        ? "Connected bank balances are older than 48 hours. Recommendations remain demand-based until a fresh balance sync succeeds."
-        : guardedResult.status === "needs_healthy_cash_account"
-          ? `No fresh, healthy ${baseCurrency} cash account is available. Recommendations remain demand-based.`
-          : "Connect and synchronize Plaid in BookLoQ before cash can constrain reorder quantities.",
-  };
+  const statement=await loadReconciledCashScenario(getD1(),{organizationId,currency:baseCurrency,asOf,nowMs:Date.now(),allowed:statementCashDetails,
+    dataMode:bookloq?.dataMode??"live",bookloqActive:bookloq?.status==="active"});
+  const currentBank=result.status==="available"?result.verifiedCashCents:null;
+  const openingCash=currentBank??statement.purchasingOpeningCashCents;
+  const capacity=datedPurchasingCapacity({openingCashCents:openingCash,safetyReserveCents:bookloq?.cashSafetyThresholdCents??0,obligations});
+  return {...result,status:capacity!==null?"available" as const:obligations.blocks.length?"needs_obligation_review" as const:result.status,
+    verifiedCashCents:openingCash,verifiedPurchasingCapacityCents:capacity,
+    sourceType:currentBank!==null?"connected_bank":statement.purchasingOpeningCashCents!==null?"reconciled_statement":"unavailable",
+    sourceAsOf:currentBank!==null?asOf:statement.sourceAsOf,
+    excludedCurrencyObligations:obligations.excludedCurrencyItemCount,
+    obligationSchedule:obligations.schedule,
+    explanation:capacity!==null
+      ? `${currentBank!==null?"Fresh connected bank cash":`Reconciled statement cash as of ${statement.sourceAsOf}`} less the safety reserve and recorded open bills and purchase orders, counted once. ${obligations.boundary}`
+      : obligations.blocks.length?"Review foreign-currency, conflicting or undated obligations before cash can constrain reorders."
+      : `Connect a current bank source or complete a recent, fully reviewed statement reconciliation. ${statement.reason??""}`};
 }
 
 async function procurementCatalog(
   organizationId: string,
   locationScope: ProcurementLocationScope | null = null,
   exposeCashContext = false,
+  statementCashDetails = false,
 ) {
   const database = getD1();
   const workspace = await database.prepare("SELECT timezone FROM workspaces WHERE id = ?").bind(organizationId).first<{ timezone: string }>();
@@ -449,7 +456,7 @@ async function procurementCatalog(
       )
       .bind(organizationId)
       .first<TimestampExtrema>(),
-    exposeCashContext ? verifiedCashContext(organizationId) : Promise.resolve(null),
+    exposeCashContext ? verifiedCashContext(organizationId, statementCashDetails) : Promise.resolve(null),
   ]);
 
   for (const row of productRows.results ?? []) {
@@ -752,7 +759,7 @@ async function list(
       .from(invoiceMatches)
       .where(and(eq(invoiceMatches.organizationId, organizationId), inArray(invoiceMatches.purchaseOrderId, orderIds)))
       .orderBy(desc(invoiceMatches.createdAt)) : Promise.resolve([]),
-    procurementCatalog(organizationId, locationScope, visibility.cashDetails),
+    procurementCatalog(organizationId, locationScope, visibility.cashDetails, visibility.statementCashDetails),
     locationScope || !visibility.financeCalendar ? Promise.resolve([]) : getDb().select({
       id: supplierBills.id,
       reference: supplierBills.billNumber,
@@ -876,6 +883,7 @@ export async function GET(request: Request) {
     const organizationWide = locationScope === null;
     const visibility = {
       cashDetails: organizationWide && bookloqAddonActive && permissions.includes("finance.bank_balances") && permissions.includes("finance.ap_ar"),
+      statementCashDetails: permissions.includes("finance.bank_transactions") && permissions.includes("payroll.totals"),
       financeCalendar: organizationWide && permissions.includes("finance.ap_ar"),
       costDetails: permissions.includes("finance.costs"),
     };
@@ -895,6 +903,7 @@ export async function POST(request: Request) {
     const organizationWide = locationScope === null;
     const visibility = {
       cashDetails: organizationWide && bookloqAddonActive && permissions.includes("finance.bank_balances") && permissions.includes("finance.ap_ar"),
+      statementCashDetails: permissions.includes("finance.bank_transactions") && permissions.includes("payroll.totals"),
       financeCalendar: organizationWide && permissions.includes("finance.ap_ar"),
       costDetails: permissions.includes("finance.costs"),
     };
@@ -920,7 +929,7 @@ export async function POST(request: Request) {
           "INVALID_LINES",
           "Add between one and 100 purchase-order lines.",
         );
-      const catalog = await procurementCatalog(context.organizationId, locationScope, visibility.cashDetails);
+      const catalog = await procurementCatalog(context.organizationId, locationScope, visibility.cashDetails, visibility.statementCashDetails);
       const productById = new Map(
         catalog.products.map((product) => [product.id, product]),
       );

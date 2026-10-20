@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import ProductBrandLogo from "./product-brand-logo";
 import CustomPlanCallout from "./custom-plan-callout";
 import { readPlanSelection, parsePlanSelection, savePlanSelection, reconcilePlanSelection } from "../shared/plan-selection";
@@ -16,6 +16,8 @@ import {
   BillingEntitlementsProvider,
   type BillingEntitlements,
 } from "./billing-entitlements-context";
+import BillingSubscriptionControls from "./billing-subscription-controls";
+import { billingRequestMessage } from "../domain/billing-feedback";
 
 type Plan = {
   key: "starter" | "growth" | "pro" | "bookloq";
@@ -41,6 +43,8 @@ type BillingData = {
     features: string[];
     limits: BillingEntitlements["limits"];
     hasCustomer?: boolean;
+    hasSubscription?: boolean;
+    currentPeriodEndsAt?: string | null;
     trialEndsAt?: string | null;
     cancelAtPeriodEnd?: boolean;
   };
@@ -91,6 +95,7 @@ async function loadAccess(beforeSetup = false): Promise<BillingData> {
 }
 
 export default function BillingOnboardingGate({ children, beforeSetup = false }: { children: ReactNode; beforeSetup?: boolean }) {
+  const openingPortal = useRef(false);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [data, setData] = useState<BillingData | null>(null);
   const [plan, setPlan] = useState<Plan["key"] | "">("");
@@ -177,18 +182,21 @@ export default function BillingOnboardingGate({ children, beforeSetup = false }:
     }
   }
 
-  async function manageBilling() {
+  async function manageBilling(action: "manage" | "cancel" = "manage") {
+    if (openingPortal.current) return;
+    openingPortal.current = true;
     setBusy(true);
     setError("");
     try {
-      const response = await apiFetch("/api/v1/billing/portal", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+      const response = await apiFetch("/api/v1/billing/portal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }), signal: AbortSignal.timeout(30_000) });
       const payload = await response.json();
       if (!response.ok) throw new Error(problemMessage(payload, "Billing could not be opened."));
       if (typeof payload.url !== "string" || !payload.url.startsWith("https://billing.stripe.com/")) throw new Error("Stripe did not return a secure billing page.");
       window.location.assign(payload.url);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Billing could not be opened.");
+      setError(billingRequestMessage(caught, "portal"));
       setBusy(false);
+      openingPortal.current = false;
     }
   }
 
@@ -312,7 +320,7 @@ export default function BillingOnboardingGate({ children, beforeSetup = false }:
         <article className="free-plan-card"><div><span className="billing-plan-badge">FREE · NO EXPIRY</span><h2>Start with Free</h2><p>No card required. Upgrade from Settings whenever you need more.</p><ul>{FREE_PLAN.highlights.map(line => <li key={line}>{line}</li>)}</ul></div><div><strong>$0<small> CAD</small></strong><button className="primary" type="button" disabled={busy || ((data.needsWorkspace || data.legalAcceptanceCurrent === false) && !legalAccepted)} onClick={() => void startFree()}>{busy ? "Starting…" : "Start Free"}</button></div></article>
       </>}
       {!memberNeedsOwner && state === "configuration_required" && <div className="billing-onboarding-unavailable"><b>Checkout is temporarily unavailable.</b><span>Your workspace is saved. Contact support@vanteloq.com so billing can be enabled safely.</span></div>}
-      {restoreExisting && !memberNeedsOwner && <button className="billing-onboarding-submit" type="button" disabled={busy || !data?.configured} onClick={() => void manageBilling()}>{busy ? "Opening billing…" : "Manage Billing in Stripe"}</button>}
+      {restoreExisting && !memberNeedsOwner && data && (data.current.hasSubscription ? <BillingSubscriptionControls current={data.current} busy={busy} onManage={() => void manageBilling()} onCancel={() => void manageBilling("cancel")} onRefresh={() => void refresh()}/> : <button className="billing-onboarding-submit" type="button" disabled={busy} onClick={() => void manageBilling()}>{busy ? "Opening billing…" : "Manage Billing in Stripe"}</button>)}
       {data && state === "checkout_required" && !restoreExisting && !memberNeedsOwner && <>
         <fieldset className="billing-product-choice">
           <legend>Vanteloq operating plans</legend>

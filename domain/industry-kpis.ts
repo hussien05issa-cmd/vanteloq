@@ -1,4 +1,5 @@
 import type { DashboardPreferences, DashboardWidgetId } from "./dashboard-preferences";
+import { resolveIndustryTemplate } from "./industry-templates";
 
 export type IndustryKpiRecommendation = {
   industry: string;
@@ -30,7 +31,7 @@ const guides: Record<string, IndustryKpiRecommendation> = {
   ], [
     { name: "Vehicle Record Completeness", definition: "Review VIN or legacy identifier, year, make, model, stock number, status, location and acquisition date in Inventory → Vehicles.", requiredEvidence: "User-reviewed vehicle documents. VIN structure is checked; make, model, ownership and history are not automatically verified." },
     { name: "Vehicle Holding Period", definition: "A dated acquisition-to-disposal interval for a defined vehicle, once both events have been recorded.", requiredEvidence: "Verified acquisition and disposal dates. Marking a vehicle sold alone does not provide a disposal date or a completed sale." },
-    { name: "Per-vehicle Gross Profit", definition: "Matched sale revenue less the recorded costs attributable to the same vehicle.", requiredEvidence: "Reviewed sale documents, acquisition cost and applicable reconditioning costs. Basic vehicle records do not yet calculate this measure." },
+    { name: "Per-vehicle Gross Profit", definition: "Matched sale revenue less the recorded costs attributable to the same vehicle.", requiredEvidence: "A dated delivered sale and a reviewed complete posted-cost snapshot for that acquisition. Operational gross is shown in Vehicle operations and is separate from BookLoQ journal figures." },
   ]),
   retail: recommendation("Retail", "Start with sales quality, merchandise economics and the cash tied up in stock.", [
     { key: "net_revenue", reason: "Shows recorded sales after discounts and returns." },
@@ -92,7 +93,11 @@ const fallback = recommendation("Your Business", "Begin with revenue, profit, ca
 ], [{ name: "Decision-specific KPI", definition: "A consistently defined measure tied to a recurring business decision.", requiredEvidence: "A named owner, reporting period, source, calculation and review cadence." }]);
 
 export function industryKpiRecommendation(industry: string | null | undefined) {
-  return guides[(industry ?? "").trim().toLowerCase()] ?? fallback;
+  const template=resolveIndustryTemplate(industry);
+  const group=template.id==="health"?"health & wellness":["cafe","restaurant","grocery"].includes(template.id)?"food & beverage":["retail","clothing","furniture"].includes(template.id)?"retail":template.id==="ecommerce"?"e-commerce":template.id==="services"?"professional services":template.id;
+  const guide=guides[group]??fallback;
+  if(template.id==="other")return guide;
+  return {...guide,industry:template.label,summary:template.description,recommended:template.metrics.map(key=>guide.recommended.find(m=>m.key===key)??{key,reason:"Review the matching period and source records before acting."}),nextMeasures:[...guide.nextMeasures,...(["cafe","restaurant"].includes(template.id)?[{name:"Recipe cost per serving",definition:"Purchase costs converted to ingredient quantities, adjusted for edible yield and divided by recipe portions.",requiredEvidence:"Purchase units and costs, compatible recipe units, measured yields and portion count."},{name:"Actual food cost",definition:"Opening inventory + purchases + transfers in − closing inventory − transfers out − supplier returns, using the same period and cost basis.",requiredEvidence:"Reviewed inventory values and movement, same currency and period. Waste is already part of consumption; do not subtract it twice."}]:[])]};
 }
 
 export function applyIndustryKpis(preferences: DashboardPreferences, industry: string | null | undefined): DashboardPreferences {

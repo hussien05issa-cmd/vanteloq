@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationOAuthStates, integrationSecrets } from "../../../../../../db/schema";
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     await getDb().delete(integrationOAuthStates).where(and(eq(integrationOAuthStates.organizationId, context.organizationId), eq(integrationOAuthStates.provider, SQUARE_PROVIDER), eq(integrationOAuthStates.connectionId, connection.id)));
     await getDb().update(integrationConnections).set({ status: "revoked", externalAccountRef: null, scopesJson: "[]", dataPromotionStatus: "blocked", promotionAuthorizedAt: null, connectedAt: null, lastErrorCode: null, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connection.id), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER)));
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.disconnected", resourceType: "integration", resourceId: connection.id, details: { provider: SQUARE_PROVIDER, providerRevoked, localTokensDeleted: true } });
-    return jsonResponse({ disconnected: true, connectionId: connection.id, providerRevoked, localCredentialsDeleted: true });
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "square");
+      return jsonResponse({ disconnected: true, connectionId: connection.id, providerRevoked, localCredentialsDeleted: true });
   });
 }

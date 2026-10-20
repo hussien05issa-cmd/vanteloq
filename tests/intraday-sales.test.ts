@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
+import { stagedSaleCostVerifiedSql } from "../server/integrations/cost-evidence";
 import { isAwaitingSalesRecords, businessClock, businessDateOffset, cumulativeSalesHours, salesDay, sameWeekdayComparison, salesChange, type TimestampedSale } from "../domain/intraday-sales";
 
 test("an absent feed differs from verified zero-dollar sales and refund-only activity", () => {
@@ -11,6 +12,8 @@ test("an absent feed differs from verified zero-dollar sales and refund-only act
   assert.equal(isAwaitingSalesRecords({ ...empty, refundsCents: 100 }), false);
   assert.equal(isAwaitingSalesRecords({ ...empty, lastSaleAt: "2026-09-11T10:00:00" }), false);
   assert.equal(isAwaitingSalesRecords({ ...empty, sourceGranularity: "daily" }), false);
+  assert.equal(isAwaitingSalesRecords({ ...empty, sourceGranularity: "daily", hasVerifiedDailyRecords:false }), true);
+  assert.equal(isAwaitingSalesRecords({ ...empty, sourceGranularity: "daily", hasVerifiedDailyRecords:true }), false);
   assert.equal(isAwaitingSalesRecords({ ...empty, transactionCount: null }), false);
 });
 
@@ -102,11 +105,13 @@ test("DST repeated hours count past instants but never include future instants",
 });
 test("staging SQL selects the latest version, isolates tenants and does not revive moved records", () => {
   const route = readFileSync("app/api/v1/command-centre/route.ts", "utf8");
-  const sql = route.match(/const staged = rSeriesCurrent \? await getD1\(\)\.prepare\(`([\s\S]*?)`\)/)?.[1].replace("${rSeriesPlaceholders}", "?");
+  const sql = route.match(/const staged = rSeriesCurrent \? await getD1\(\)\.prepare\(`([\s\S]*?)`\)/)?.[1]
+    .replace("${rSeriesPlaceholders}", "?").replace('${stagedSaleCostVerifiedSql("latest")}', stagedSaleCostVerifiedSql("latest"));
   assert.ok(sql);
   const db = new DatabaseSync(":memory:");
   try {
     db.exec("CREATE TABLE integration_staged_sales (id TEXT, organization_id TEXT, provider TEXT, connection_id TEXT, external_sale_id TEXT, outlet_ref TEXT, sold_at TEXT, state TEXT, total_cents INTEGER, tax_cents INTEGER, cost_cents INTEGER, discount_cents INTEGER, line_count INTEGER, staged_at INTEGER)");
+    db.exec("CREATE TABLE commerce_sale_lines (organization_id TEXT, provider TEXT, connection_id TEXT, external_sale_id TEXT, quantity_milli INTEGER, cost_known INTEGER, cost_cents INTEGER)");
     const insert = db.prepare("INSERT INTO integration_staged_sales VALUES (?, ?, 'lightspeed-r', ?, ?, 'shop', ?, ?, ?, 0, 1, 0, 1, ?)");
     insert.run("1", "owner", "a", "sale-1", "2026-09-07T10:00:00", "completed", 100, 1);
     insert.run("2", "owner", "a", "sale-1", "2026-09-07T10:00:00", "completed", 200, 2);

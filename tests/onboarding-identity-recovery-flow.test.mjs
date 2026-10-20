@@ -117,6 +117,11 @@ test("onboarding rebinds only orphaned Supabase rows and protects existing works
     }), environment, context);
     assert.equal((await emailChangeReadback.json()).organization?.id, originalOrganization,
       "An email change must not send the same verified owner through signup again");
+    const legacyOther=await worker.fetch(new Request(`${origin}/api/v1/onboarding`,{method:"POST",headers:headers("legacy-collision@example.invalid","legacy-collision-subject"),body:JSON.stringify(onboardingPayload("Legacy Different Store","legacy-collision@example.invalid"))}),environment,context);
+    assert.equal(legacyOther.status,201);
+    await database.prepare("UPDATE users SET auth_subject=NULL,auth_provider=NULL,email='email-change-after@example.invalid' WHERE email='legacy-collision@example.invalid'").run();
+    const canonicalRead=await worker.fetch(new Request(`${origin}/api/v1/onboarding`,{headers:headers("email-change-after@example.invalid","unchanged-auth-subject")}),environment,context);
+    assert.equal(canonicalRead.status,200);assert.equal((await canonicalRead.json()).organization?.id,originalOrganization,"A subject-bound owner wins over an unrelated legacy email match");
     const checkoutEmail = "checkout-first@example.invalid";
     const checkoutHeaders = headers(checkoutEmail, "checkout-first-subject");
     const checkoutBody = { stage: "checkout", legalAccepted: true, termsVersion: TERMS_OF_SERVICE_VERSION,

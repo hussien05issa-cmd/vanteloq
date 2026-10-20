@@ -1,9 +1,33 @@
 import { getRuntimeEnv } from "../../db";
 import { ApiError } from "../api";
+import { SLACK_CONVERSATION_READ_NOTICE_VERSION, type SlackMode } from "../../domain/slack-conversations";
 
 export const SLACK_PROVIDER = "slack";
 export const SLACK_API_VERSION = "oauth-v2";
 export const SLACK_SCOPES = ["incoming-webhook"] as const;
+export const SLACK_CONVERSATION_SCOPES = ["incoming-webhook", "channels:read", "channels:history"] as const;
+
+export function slackScopesForMode(mode: SlackMode): readonly string[] {
+  return mode === "single_channel_conversations" ? SLACK_CONVERSATION_SCOPES : SLACK_SCOPES;
+}
+
+export function slackModeForScopes(value: unknown): SlackMode {
+  if (!Array.isArray(value) || value.some(scope => typeof scope !== "string") || new Set(value).size !== value.length) {
+    throw new ApiError(409, "SLACK_SCOPES_INVALID", "Reconnect Slack with the permissions selected in Vanteloq.");
+  }
+  const sorted = [...value].sort();
+  for (const mode of ["single_channel_notifications", "single_channel_conversations"] as const) {
+    const expected = [...slackScopesForMode(mode)].sort();
+    if (sorted.length === expected.length && sorted.every((scope, index) => scope === expected[index])) return mode;
+  }
+  throw new ApiError(409, "SLACK_SCOPES_INVALID", "Reconnect Slack with the permissions selected in Vanteloq.");
+}
+
+export function slackModeForStoredScopes(value: string): SlackMode {
+  let scopes: unknown;
+  try { scopes = JSON.parse(value); } catch { scopes = null; }
+  return slackModeForScopes(scopes);
+}
 
 const STATE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const SLACK_ID_PATTERN = /^[A-Za-z0-9]{2,64}$/;
@@ -31,6 +55,9 @@ type SlackOAuthResponse = {
   bot_user_id?: unknown;
   scope?: unknown;
   token_type?: unknown;
+  refresh_token?: unknown;
+  expires_in?: unknown;
+  authed_user?: { access_token?: unknown; refresh_token?: unknown; scope?: unknown } | null;
   team?: { id?: unknown; name?: unknown } | null;
   enterprise?: { id?: unknown; name?: unknown } | null;
   incoming_webhook?: {
@@ -51,7 +78,15 @@ export type SlackGrant = {
   channelId: string;
   channelName: string;
   webhookUrl: string;
-  scopes: readonly ["incoming-webhook"];
+  scopes: readonly string[];
+};
+
+export type SlackConversationReadMetadata = {
+  version: 1;
+  enabled: true;
+  noticeVersion: typeof SLACK_CONVERSATION_READ_NOTICE_VERSION;
+  authorizedByUserId: string;
+  nextReadAt: number;
 };
 
 export type SlackCredentialEnvelope = {
@@ -60,6 +95,7 @@ export type SlackCredentialEnvelope = {
   teamId: string;
   channelId: string;
   webhookUrl: string;
+  conversationRead?: SlackConversationReadMetadata;
 };
 
 function runtimeEnv(): SlackRuntimeEnv {
@@ -81,6 +117,8 @@ export function slackReadiness() {
     apiVersion: SLACK_API_VERSION,
     scopes: [...SLACK_SCOPES],
     mode: "single_channel_notifications" as const,
+    availableModes: ["single_channel_notifications", "single_channel_conversations"] as const,
+    conversationReadBuilt: true,
     liveDataEligible: false,
     dataPromotionEnabled: false,
   };
@@ -153,12 +191,12 @@ export async function slackStateHash(state: string): Promise<string> {
   return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-export function buildSlackAuthorizationUrl(state: string): string {
+export function buildSlackAuthorizationUrl(state: string, mode: SlackMode = "single_channel_notifications"): string {
   if (!STATE_PATTERN.test(state)) throw new Error("Invalid Slack OAuth state");
   const current = config();
   const url = new URL("https://slack.com/oauth/v2/authorize");
   url.searchParams.set("client_id", current.clientId);
-  url.searchParams.set("scope", SLACK_SCOPES.join(","));
+  url.searchParams.set("scope", slackScopesForMode(mode).join(","));
   url.searchParams.set("redirect_uri", current.redirectUri);
   url.searchParams.set("state", state);
   return url.toString();
@@ -195,7 +233,7 @@ function parseScopes(value: unknown): string[] {
   return [...new Set(value.split(/[\s,]+/).map((scope) => scope.trim()).filter(Boolean))].sort();
 }
 
-export async function exchangeSlackAuthorizationCode(code: string, fetcher: typeof fetch = fetch): Promise<SlackGrant> {
+export async function exchangeSlackAuthorizationCode(code: string, fetcher: typeof fetch = fetch, mode: SlackMode = "single_channel_notifications"): Promise<SlackGrant> {
   if (!code || code.length > 2_048) throw new ApiError(400, "SLACK_CODE_INVALID", "Slack returned an invalid authorization code.");
   const current = config();
   const response = await fetcher("https://slack.com/api/oauth.v2.access", {
@@ -221,8 +259,16 @@ export async function exchangeSlackAuthorizationCode(code: string, fetcher: type
   const body = await response.json() as SlackOAuthResponse;
   if (body.ok !== true) throw new ApiError(502, "SLACK_TOKEN_EXCHANGE_FAILED", "Slack did not accept the authorization request. Start again.");
   const scopes = parseScopes(body.scope);
-  if (scopes.length !== 1 || scopes[0] !== SLACK_SCOPES[0]) {
-    throw new ApiError(409, "SLACK_SCOPES_INVALID", "Slack did not return the single-channel permission requested by Vanteloq. Review the Slack app scopes before reconnecting.");
+  if (mode === "single_channel_conversations" && scopes.length < SLACK_CONVERSATION_SCOPES.length
+    && scopes.every(scope => (SLACK_CONVERSATION_SCOPES as readonly string[]).includes(scope))) {
+    throw new ApiError(409, "SLACK_CONVERSATION_SCOPES_REQUIRED", "Slack conversation access was not approved. Reconnect and approve both optional public channel permissions to read messages. For notifications only, remove Vanteloq in Slack before reconnecting.");
+  }
+  if (slackModeForScopes(scopes) !== mode) {
+    throw new ApiError(409, "SLACK_SCOPES_INVALID", "Slack did not return the permissions selected in Vanteloq. Review the Slack app scopes before reconnecting.");
+  }
+  if (body.refresh_token !== undefined || body.expires_in !== undefined || body.authed_user?.access_token !== undefined
+    || body.authed_user?.refresh_token !== undefined || parseScopes(body.authed_user?.scope).length) {
+    throw new ApiError(409, "SLACK_TOKEN_ROTATION_UNSUPPORTED", "This Slack token needs a refresh or user permission flow that Vanteloq does not support. Review the Slack app settings before reconnecting.");
   }
   if (body.token_type !== "bot" || typeof body.access_token !== "string" || !body.access_token.startsWith("xoxb-")
     || !body.incoming_webhook || !body.team) {
@@ -241,17 +287,23 @@ export async function exchangeSlackAuthorizationCode(code: string, fetcher: type
     channelId,
     channelName: cleanName(body.incoming_webhook.channel, channelId).replace(/^#/, ""),
     webhookUrl: validateSlackWebhookUrl(typeof body.incoming_webhook.url === "string" ? body.incoming_webhook.url : ""),
-    scopes: SLACK_SCOPES,
+    scopes: slackScopesForMode(mode),
   };
 }
 
-export function slackCredentialEnvelope(grant: SlackGrant): SlackCredentialEnvelope {
+export function slackCredentialEnvelope(grant: SlackGrant, authorizedByUserId?: string): SlackCredentialEnvelope {
+  const readsMessages = slackModeForScopes(grant.scopes) === "single_channel_conversations";
+  if (readsMessages && (!authorizedByUserId || !/^[A-Za-z0-9:_-]{1,200}$/.test(authorizedByUserId))) {
+    throw new ApiError(409, "SLACK_CONVERSATION_CONSENT_REQUIRED", "The workspace owner must approve Slack conversation access before connecting.");
+  }
   return {
     version: 1,
     accessToken: grant.accessToken,
     teamId: grant.teamId,
     channelId: grant.channelId,
     webhookUrl: validateSlackWebhookUrl(grant.webhookUrl),
+    ...(readsMessages ? { conversationRead: { version: 1 as const, enabled: true as const,
+      noticeVersion: SLACK_CONVERSATION_READ_NOTICE_VERSION, authorizedByUserId: authorizedByUserId!, nextReadAt: 0 } } : {}),
   };
 }
 
@@ -278,8 +330,9 @@ export async function encryptedSlackNoRefreshToken(): Promise<string> {
 }
 
 export async function decryptSlackCredentials(value: string): Promise<SlackCredentialEnvelope> {
-  const [version, encodedIv, encodedCiphertext] = value.split(".");
-  if (version !== "v1" || !encodedIv || !encodedCiphertext) {
+  const parts = value.split(".");
+  const [version, encodedIv, encodedCiphertext] = parts;
+  if (parts.length !== 3 || version !== "v1" || !encodedIv || !encodedCiphertext) {
     throw new ApiError(500, "SLACK_SECRET_INVALID", "Stored Slack credentials could not be read.");
   }
   try {
@@ -298,7 +351,14 @@ export async function decryptSlackCredentials(value: string): Promise<SlackCrede
       || typeof parsed.webhookUrl !== "string") {
       throw new Error("Invalid Slack credential envelope");
     }
-    return { ...parsed, webhookUrl: validateSlackWebhookUrl(parsed.webhookUrl) } as SlackCredentialEnvelope;
+    const read = parsed.conversationRead;
+    if (read !== undefined && (!read || typeof read !== "object" || read.version !== 1 || read.enabled !== true
+      || read.noticeVersion !== SLACK_CONVERSATION_READ_NOTICE_VERSION || typeof read.authorizedByUserId !== "string"
+      || !/^[A-Za-z0-9:_-]{1,200}$/.test(read.authorizedByUserId) || !Number.isSafeInteger(read.nextReadAt)
+      || read.nextReadAt < 0 || read.nextReadAt > 4_102_444_800)) throw new Error("Invalid Slack conversation permission metadata");
+    return { version: 1, accessToken: parsed.accessToken, teamId: parsed.teamId, channelId: parsed.channelId,
+      webhookUrl: validateSlackWebhookUrl(parsed.webhookUrl), ...(read ? { conversationRead: { version: 1, enabled: true,
+        noticeVersion: read.noticeVersion, authorizedByUserId: read.authorizedByUserId, nextReadAt: read.nextReadAt } } : {}) };
   } catch (error) {
     if (error instanceof ApiError) throw error;
     throw new ApiError(500, "SLACK_SECRET_DECRYPTION_FAILED", "Stored Slack credentials could not be decrypted.");

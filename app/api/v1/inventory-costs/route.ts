@@ -3,7 +3,8 @@ import { recordAudit } from "../../../../server/audit";
 import { requireAccess } from "../../../../server/authorization";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../server/api";
 import { requirePermission } from "../../../../server/permissions";
-import { applyOwnerInventoryCosts } from "../../../../server/inventory-costs";
+import { applyOwnerInventoryCosts, prepareOwnerCostChange } from "../../../../server/inventory-costs";
+import { requireReportImportPrivacyAcknowledgement, reportImportPrivacyAuditDetails } from "../../../../server/report-import-privacy";
 
 const roles = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const MAX_ENTRIES = 500;
@@ -62,13 +63,6 @@ function parseEntries(value: unknown): CostEntry[] {
   });
 }
 
-async function runBatches(statements: D1PreparedStatement[], size = 50): Promise<void> {
-  const database = getD1();
-  for (let index = 0; index < statements.length; index += size) {
-    await database.batch(statements.slice(index, index + size));
-  }
-}
-
 export async function POST(request: Request) {
   return handleApi(request, async ({ requestId }) => {
     requireSameOrigin(request);
@@ -76,9 +70,13 @@ export async function POST(request: Request) {
     await requirePermission(context, "inventory.adjust");
     await enforceRateLimit("inventory-costs:write", context.userId, 30, 3_600);
     const body = await readJsonObject(request, 128_000);
+    if (body.effectiveAt !== undefined || body.historicalCorrection !== undefined) {
+      throw new ApiError(400, "INVENTORY_COST_HISTORY_REVIEW_REQUIRED", "New costs apply from the time they are saved. Correct historical costs through a reviewed accounting adjustment.");
+    }
     const source = body.source === "csv" ? "csv" as const : body.source === "manual" ? "manual" as const : null;
     if (!source) throw new ApiError(400, "INVENTORY_COST_SOURCE_INVALID", "Choose manual entry or CSV upload.");
     if (source === "csv") await requirePermission(context, "data.import");
+    const acknowledgement = source === "csv" ? requireReportImportPrivacyAcknowledgement(body.importPrivacyAcknowledgement) : null;
     const entries = parseEntries(body.entries);
     const database = getD1();
     const productResult = await database.prepare(`
@@ -104,7 +102,8 @@ export async function POST(request: Request) {
     for (const input of entries) {
       const candidates = input.externalProductId
         ? products.filter((product) => product.provider === input.provider && product.connectionId === input.connectionId && product.externalProductId === input.externalProductId)
-        : products.filter((product) => product.sku.trim().toUpperCase() === input.sku && (!input.provider || product.provider === input.provider));
+        : products.filter((product) => product.sku.trim().toUpperCase() === input.sku && (!input.provider || product.provider === input.provider)
+          && (!input.connectionId || product.connectionId === input.connectionId));
       if (candidates.length === 0) {
         errors.push({ row: input.row, code: "not_found", message: `No approved inventory item matches ${input.sku || input.externalProductId}.` });
         continue;
@@ -129,13 +128,17 @@ export async function POST(request: Request) {
     const now = new Date();
     const statements: D1PreparedStatement[] = [];
     for (const { input, product } of resolved) {
-      statements.push(database.prepare(`
-        UPDATE commerce_products
-        SET owner_cost_cents = ?, owner_cost_source = ?, owner_cost_updated_by_user_id = ?, owner_cost_updated_at = ?
-        WHERE id = ? AND organization_id = ?
-      `).bind(input.unitCostCents, source, context.userId, now.getTime(), product.id, context.organizationId));
+      statements.push(...await prepareOwnerCostChange(database, { request, requestId,
+        organizationId: context.organizationId, userId: context.userId, productId: product.id,
+        unitCostCents: input.unitCostCents, source, now: now.getTime() }));
     }
-    await runBatches(statements);
+    try { await database.batch(statements); }
+    catch (error) {
+      if (/audit_events_outcome_check/.test(String(error))) {
+        throw new ApiError(409, "INVENTORY_COST_SOURCE_CHANGED", "An inventory item or its connection changed. Refresh the inventory and try again.");
+      }
+      throw error;
+    }
 
     const affectedConnections = [...new Map(resolved.map(({ product }) => [product.connectionId, product])).values()];
     for (const product of affectedConnections) {
@@ -158,11 +161,13 @@ export async function POST(request: Request) {
       actorUserId: context.userId,
       action: source === "csv" ? "inventory.costs_imported" : "inventory.cost_updated",
       resourceType: "inventory_product_cost",
-      details: { source, rows: resolved.length, connections: affectedConnections.length },
+      details: { source, rows: resolved.length, connections: affectedConnections.length, ...(acknowledgement ? reportImportPrivacyAuditDetails(acknowledgement) : {}) },
     });
     return jsonResponse({
       saved: resolved.length,
       source,
+      effectiveFrom: now.toISOString(),
+      historicalCostsPreserved: true,
       products: resolved.map(({ input, product }) => ({
         provider: product.provider,
         connectionId: product.connectionId,

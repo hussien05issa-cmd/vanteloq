@@ -1,13 +1,17 @@
+import { hasFreeEnrollment } from "../entitlements/free";
+import { requireFreeIntegrationSelection, subscriptionAllowsFreeFallback } from "./free-selection";
 import { and, eq } from "drizzle-orm";
 import { getD1, getDb, getRuntimeEnv } from "../../db";
 import { integrationSyncSchedules, internalAccess, memberships, users, workspaces } from "../../db/schema";
+import { isCurrentBackgroundSyncConsent, type BackgroundSyncConsent } from "../../domain/pos-sync-consent";
 import { ApiError, readRequestBytes } from "../api";
 import { recordAudit } from "../audit";
 import { runDocumentCleanupTick } from "../document-cleanup-scheduler";
 import { cleanupExpiredRateLimits } from "../rate-limit-maintenance";
+import { runWorkflowFollowupTick } from "../workflow-followup";
 import { complimentaryGrantForOwner } from "../complimentary-access";
 import { internalAccessEnabled } from "../internal-access";
-import { resolveComplimentaryEntitlements, resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
+import { resolveFreeEntitlements, resolveComplimentaryEntitlements, resolveInternalEntitlements, resolveSubscriptionEntitlements, subscriptionSnapshot, requireFeatureEntitlement, requireTenantServiceAccess } from "../entitlements/engine";
 import { dispatchScheduledSync } from "./sync-dispatch";
 import { isScheduledPosProvider, nextSyncAt, shouldPauseSync, syncHasMore, syncRetryDelay } from "./sync-policy";
 import { verifySyncSignature } from "./sync-signature";
@@ -16,6 +20,19 @@ import type { SyncContext } from "./sync/types";
 export const SYNC_AUTHORIZATION_VERSION = "owner-background-sync-v1";
 type Schedule = typeof integrationSyncSchedules.$inferSelect;
 const seconds = () => Math.floor(Date.now() / 1000);
+
+export async function requireCurrentBackgroundSyncConsent(scope: { organizationId: string; actorUserId: string; provider: string }) {
+  const consent = await getD1().prepare(`SELECT organization_id organizationId, actor_user_id actorUserId,
+    provider, status, notice_version noticeVersion, privacy_policy_version privacyPolicyVersion,
+    data_categories_json dataCategoriesJson, purposes_json purposesJson, accepted_at acceptedAt, withdrawn_at withdrawnAt
+    FROM integration_consents WHERE organization_id=? AND provider=? AND actor_user_id=?
+      AND notice_version LIKE 'pos-background-%'
+    ORDER BY accepted_at DESC, created_at DESC, rowid DESC LIMIT 1`)
+    .bind(scope.organizationId, scope.provider, scope.actorUserId).first<BackgroundSyncConsent>();
+  if (!isCurrentBackgroundSyncConsent(consent, scope)) {
+    throw new ApiError(403, "INTEGRATION_CONSENT_REQUIRED", "Review the current automatic sync data notice and authorize background imports again.");
+  }
+}
 
 export async function scheduledSyncContext(schedule: Schedule): Promise<SyncContext> {
   const [actor] = await getDb().select({ user: users, membership: memberships, organization: workspaces })
@@ -31,9 +48,7 @@ export async function scheduledSyncContext(schedule: Schedule): Promise<SyncCont
   const deleting = await getD1().prepare("SELECT id FROM account_deletion_jobs WHERE stage IN ('confirmed','local_deleted') AND (user_id=? OR (scope='workspace' AND organization_id=?)) LIMIT 1")
     .bind(actor.user.id, schedule.organizationId).first();
   if (deleting) throw new ApiError(409, "DELETION_IN_PROGRESS", "The account is being deleted.");
-  const consent = await getD1().prepare("SELECT status FROM integration_consents WHERE organization_id=? AND provider=? ORDER BY accepted_at DESC, created_at DESC LIMIT 1")
-    .bind(schedule.organizationId, schedule.provider).first<{status:string}>();
-  if (consent?.status !== "accepted") throw new ApiError(403, "INTEGRATION_CONSENT_REQUIRED", "Integration consent must be renewed.");
+  await requireCurrentBackgroundSyncConsent({ organizationId: schedule.organizationId, actorUserId: actor.user.id, provider: schedule.provider });
   const connection = await getD1().prepare("SELECT id FROM integration_connections WHERE id=? AND organization_id=? AND provider=? AND status='connected' AND privacy_data_deleted_at IS NULL")
     .bind(schedule.connectionId, schedule.organizationId, schedule.provider).first();
   if (!connection) throw new ApiError(403, "SYNC_AUTHORIZATION_WITHDRAWN", "The connection is no longer authorized.");
@@ -45,11 +60,21 @@ export async function scheduledSyncContext(schedule: Schedule): Promise<SyncCont
     eq(internalAccess.active, true), eq(internalAccess.accessLevel, "founder"),
   )).limit(1) : [];
   const complimentary = await complimentaryGrantForOwner({ userId: actor.user.id, organizationId: schedule.organizationId, authSubject: actor.user.authSubject, email: actor.user.email });
-  const entitlements = internal
+  const snapshot = await subscriptionSnapshot(schedule.organizationId);
+  let entitlements = internal
     ? resolveInternalEntitlements({ accessLevel: internal.accessLevel, mfaRequired: internal.mfaRequired })
-    : complimentary ? resolveComplimentaryEntitlements(complimentary) : resolveSubscriptionEntitlements(await subscriptionSnapshot(schedule.organizationId));
+    : complimentary ? resolveComplimentaryEntitlements(complimentary) : resolveSubscriptionEntitlements(snapshot);
+  if (entitlements.accessType === "none" && subscriptionAllowsFreeFallback(snapshot.status)
+    && await hasFreeEnrollment(schedule.organizationId)) entitlements = resolveFreeEntitlements();
   requireTenantServiceAccess(entitlements);
-  requireFeatureEntitlement(entitlements, "pos.reporting.core");
+  if(entitlements.accessType === "free") {
+    try {
+      await requireFreeIntegrationSelection(schedule.organizationId, schedule.provider, schedule.connectionId);
+    } catch (error) {
+      if (!(error instanceof ApiError) || !error.code.startsWith("FREE_INTEGRATION_")) throw error;
+      throw new ApiError(403, "SYNC_AUTHORIZATION_WITHDRAWN", "Select this provider in your two Free integrations before syncing.");
+    }
+  } else requireFeatureEntitlement(entitlements, "pos.reporting.core");
   return { userId: actor.user.id, organizationId: schedule.organizationId, organization: actor.organization };
 }
 
@@ -110,10 +135,19 @@ export async function runScheduledSyncTick(request: Request, requestId: string) 
   const nonce = request.headers.get("x-vanteloq-sync-nonce");
   await verifySyncSignature(getRuntimeEnv().POS_SYNC_SECRET, request.headers.get("x-vanteloq-sync-timestamp"), nonce,
     request.headers.get("x-vanteloq-sync-signature"), body);
-  if (body !== "{}") throw new ApiError(400, "SYNC_BODY_INVALID", "The scheduler does not accept account selection.");
+  const inspect = body === '{"mode":"inspect"}';
+  if (body !== "{}" && !inspect) throw new ApiError(400, "SYNC_BODY_INVALID", "Use an empty scheduler body or the exact inspection mode without account selection.");
   const now = seconds();
   const receipt = await getD1().prepare("INSERT OR IGNORE INTO integration_sync_ticks(id,created_at) VALUES (?,?)").bind(nonce, now).run();
   if (Number(receipt.meta.changes ?? 0) !== 1) throw new ApiError(409, "SYNC_REPLAY_REJECTED", "This scheduler tick was already accepted.");
+  if (inspect) {
+    const checkedAt = new Date(now * 1000).toISOString();
+    await recordAudit({ request, requestId, action: "integration.scheduler_inspected", resourceType: "scheduler_tick", resourceId: nonce,
+      details: { mode: "inspect", actionsStarted: false, checkedAt } });
+    // The canary writes only its replay nonce and metadata receipt. It must branch
+    // before job selection, disposal, maintenance, follow-through or provider work.
+    return { accepted: true, mode: "inspect", actionsStarted: false, tickId: nonce, checkedAt, processed: 0, counts: {} };
+  }
   await getD1().prepare("DELETE FROM integration_sync_ticks WHERE created_at<?").bind(now - 86400).run();
   // Start disposal retries alongside POS work only after the signed, replay-safe tick is accepted.
   // Existing deletion/processing consent is sufficient to finish cleanup even after a plan ends.
@@ -126,9 +160,12 @@ export async function runScheduledSyncTick(request: Request, requestId: string) 
         nextAttemptAt: event.nextAttemptAt, authorization: "existing_document_request", newProcessingStarted: false } }),
   }).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
   const posPromise = runDuePosBatch(request, requestId, now).catch(() => ({ processed: 0, counts: { scheduler_error: 1 } }));
-  const [pos, documentCleanup, rateLimitCleanup] = await Promise.all([posPromise, cleanupPromise,
-    cleanupExpiredRateLimits(getD1(), now).catch(() => ({ schedulerError: true }))]);
-  return { accepted: true, ...pos, documentCleanup, rateLimitCleanup };
+  // Opt-in follow-through is independently bounded and cannot cancel POS work.
+  // It runs only after the existing signature and replay checks above succeed.
+  const [pos, documentCleanup, rateLimitCleanup, workflowFollowup] = await Promise.all([posPromise, cleanupPromise,
+    cleanupExpiredRateLimits(getD1(), now).catch(() => ({ schedulerError: true })),
+    runWorkflowFollowupTick().catch(() => ({ schedulerError: true }))]);
+  return { accepted: true, ...pos, documentCleanup, rateLimitCleanup, workflowFollowup };
 }
 
 async function runDuePosBatch(request: Request, requestId: string, now: number) {

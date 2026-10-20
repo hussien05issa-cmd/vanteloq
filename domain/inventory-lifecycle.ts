@@ -45,7 +45,10 @@ export function assessInventoryLot(lot: InventoryLotEvidence, asOf: Date): Inven
     lot.bestBeforeDate ? { value: lot.bestBeforeDate, kind: "best_before" as const } : null,
   ].filter((item): item is NonNullable<typeof item> => Boolean(item));
   dateCandidates.sort((a, b) => a.value.localeCompare(b.value));
-  const tracked = dateCandidates[0] ?? null;
+  // An actual elapsed expiration always takes precedence over an earlier
+  // best-before quality date. The latter is not a food-safety determination.
+  const expiredDate = dateCandidates.find(date => date.kind === "expiration" && utcDay(date.value) < utcDay(asOf));
+  const tracked = expiredDate ?? dateCandidates[0] ?? null;
   const daysRemaining = tracked ? Math.ceil((utcDay(tracked.value) - utcDay(asOf)) / DAY_MS) : null;
   const hasDemandEvidence = lot.unitsSold30Days !== null && lot.demandHistoryDays >= 7;
   const evidenceDays = Math.max(1, Math.min(30, lot.demandHistoryDays));
@@ -73,7 +76,7 @@ export function assessInventoryLot(lot: InventoryLotEvidence, asOf: Date): Inven
   if (lot.quantityRemaining === 0) {
     risk = "healthy";
   } else if (daysRemaining !== null) {
-    if (daysRemaining < 0) risk = "expired";
+    if (daysRemaining < 0) risk = tracked?.kind === "expiration" ? "expired" : "monitor";
     else if (daysRemaining <= 14 || (projectedUnitsAtDate !== null && projectedUnitsAtDate > 0 && daysRemaining <= 30)) risk = "urgent";
     else if (projectedUnitsAtDate !== null && projectedUnitsAtDate > 0 && daysRemaining <= 90) risk = "at_risk";
     else if ((projectedUnitsAtDate !== null && projectedUnitsAtDate > 0 && daysRemaining <= 180) || daysRemaining <= 60) risk = "monitor";
@@ -82,6 +85,8 @@ export function assessInventoryLot(lot: InventoryLotEvidence, asOf: Date): Inven
 
   const recommendation = lot.quantityRemaining === 0
     ? "No units remain in this lot; retain the record for traceability."
+    : tracked?.kind === "best_before" && daysRemaining !== null && daysRemaining < 0
+    ? "Review this lot's quality, storage conditions and supplier guidance. A best-before date alone does not establish that food is unsafe; record the reviewed disposition."
     : risk === "expired"
     ? "Quarantine this lot and record an authorized expiry or waste adjustment before it can be sold."
     : risk === "urgent"

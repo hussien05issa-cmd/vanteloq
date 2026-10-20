@@ -7,6 +7,8 @@ import { effectivePermissions, requirePermission } from "../../../../server/perm
 import { authorizedLocationDataScope } from "../../../../server/location-access";
 import { commerceSourceAuthority } from "../../../../server/integrations/source-authority";
 import { reportSaleLinesSql } from "../../../../server/integrations/report-sale-lines";
+import { verifiedPosPublicationSql } from "../../../../server/integrations/pos-publication";
+import { completeLineCostSumSql, knownLineCostSql, providerSpecificCommerceScopes } from "../../../../server/commerce-report-query";
 import { commerceChangeRate, inventoryDecision, parseCommercePeriod } from "../../../../domain/commerce-intelligence";
 import {
   commerceResponseForMode,
@@ -52,10 +54,19 @@ export async function GET(request: Request) {
       throw new ApiError(400, "COMMERCE_PERIOD_INVALID", error instanceof Error ? error.message : "Choose a valid date range.");
     }
     const locationAccess = await authorizedLocationDataScope(context, url.searchParams.get("location"));
+    const requestedConnectionId=url.searchParams.get("connection")?.trim()||null;
+    if(requestedConnectionId) await requirePermission(context,"integrations.view");
+    if(requestedConnectionId&&(period.days>366||period.to>businessClock(new Date(),context.organization.timezone)!.date))
+      throw new ApiError(400,"COMMERCE_SOURCE_PERIOD_INVALID","Choose a past or current reporting period of 366 days or less.");
     const salesAuthority = await commerceSourceAuthority({ organizationId: context.organizationId, localLocationIds: locationAccess.locationIds ?? locationAccess.locations.map(location => location.id), factFamily: "sales", salesLineFacts: true });
-    if (salesAuthority.status === "conflict") throw new ApiError(409, "COMMERCE_SOURCE_OVERLAP", "Sales sources overlap or are syncing. Review the authoritative source in Reports before combining records.");
-    const salesScopes = JSON.stringify(salesAuthority.selections.map(item => ({ p: item.provider, c: item.connectionId, o: item.externalOutletRef })));
-    const providerLocations = locationAccess.providerLocations ?? [];
+    if (!requestedConnectionId&&salesAuthority.status === "conflict") throw new ApiError(409, "COMMERCE_SOURCE_OVERLAP", "Sales sources overlap or are syncing. Review the authoritative source in Reports before combining records.");
+    const inventoryAuthority = canReadInventory ? await commerceSourceAuthority({ organizationId: context.organizationId, localLocationIds: locationAccess.locationIds ?? locationAccess.locations.map(location => location.id), factFamily: "inventory" }) : null;
+    const providerScope=requestedConnectionId?providerSpecificCommerceScopes(requestedConnectionId,salesAuthority.candidates,inventoryAuthority?.candidates??[]):null;
+    const selectedSalesScopes=providerScope?.sales??salesAuthority.selections;
+    const salesScopes = JSON.stringify(selectedSalesScopes.map(item => ({ p: item.provider, c: item.connectionId, o: item.externalOutletRef })));
+    const providerLocations = (locationAccess.providerLocations ?? []).filter(scope=>!requestedConnectionId||scope.connectionId===requestedConnectionId);
+    if(requestedConnectionId&&(selectedSalesScopes.length>30||(providerScope?.inventory.length??0)>30))
+      throw new ApiError(413,"COMMERCE_SOURCE_SCOPE_LIMIT","Select a location with 30 or fewer mapped source outlets.");
     const restricted = locationAccess.locationRefs !== null;
     const blocked = restricted && providerLocations.length === 0;
     const authorizedSaleLocationSql = restricted
@@ -68,8 +79,8 @@ export async function GET(request: Request) {
       : [];
     const saleLocationSql = authorizedSaleLocationSql + " AND EXISTS (SELECT 1 FROM json_each(?) rs WHERE json_extract(rs.value,'$.p')=l.provider AND json_extract(rs.value,'$.c')=l.connection_id AND json_extract(rs.value,'$.o')=l.outlet_ref)";
     const saleLocationBindings = [...authorizedSaleLocationBindings, salesScopes];
-    const inventoryAuthority = canReadInventory ? await commerceSourceAuthority({ organizationId: context.organizationId, localLocationIds: locationAccess.locationIds ?? locationAccess.locations.map(location => location.id), factFamily: "inventory" }) : null;
-    const inventoryScopes = JSON.stringify(inventoryAuthority?.status === "conflict" ? [] : inventoryAuthority?.selections.map(item => ({ p: item.provider, c: item.connectionId, o: item.metricLocationRef })) ?? []);
+    const selectedInventoryScopes=providerScope?.inventory??(inventoryAuthority?.status === "conflict"?[]:inventoryAuthority?.selections??[]);
+    const inventoryScopes = JSON.stringify(selectedInventoryScopes.map(item => ({ p: item.provider, c: item.connectionId, o: item.metricLocationRef })));
     const authorizedInventoryLocationSql = restricted
       ? blocked
         ? " AND 0 = 1"
@@ -87,6 +98,7 @@ export async function GET(request: Request) {
         AND approved.provider = ${alias}.${connectionColumn === "source_connection_id" ? "source_provider" : "provider"}
         AND approved.status = 'connected'
         AND approved.data_promotion_status = 'approved'
+        AND ${verifiedPosPublicationSql('approved')}
         AND (approved.provider <> 'moneris' OR approved.source_namespace LIKE 'production:%')
         AND (approved.sync_lease_owner IS NULL OR approved.sync_lease_expires_at IS NULL OR approved.sync_lease_expires_at <= CAST(strftime('%s','now') AS INTEGER))
     )`;
@@ -94,12 +106,11 @@ export async function GET(request: Request) {
     const currentWindow = periodWindow(period.from, period.toExclusive);
     const salePeriodSql = ` AND ${currentWindow.sql}`;
     const database = getD1();
-    // A legacy zero cost has no evidence of being a verified free product.
-    // Only complete, non-zero line costs can support a historical profit figure.
+    // Explicit zero is known. Partial or unknown cost rows cannot certify profit.
     const canViewVerifiedProfit = canReadProfit;
     const metrics = async (from: string, toExclusive: string) => database.prepare(`
       SELECT coalesce(sum(l.net_sales_cents), 0) AS netSalesCents,
-             CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS costCents,
+             ${completeLineCostSumSql('l')} AS costCents,
              coalesce(sum(l.discount_cents), 0) AS discountsCents,
              coalesce(sum(l.quantity_milli), 0) AS quantityMilli,
              count(DISTINCT l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id) AS transactions,
@@ -116,13 +127,13 @@ export async function GET(request: Request) {
                l.product_ref AS productRef, l.customer_ref AS customerRef, l.outlet_ref AS outletRef,
                l.sold_at AS soldAt, l.sku, coalesce(l.product_name, p.name, l.sku, 'Unclassified item') AS productName,
                l.quantity_milli AS quantityMilli, l.net_sales_cents AS netSalesCents,
-               nullif(l.cost_cents, 0) AS costCents, l.discount_cents AS discountCents,
+               CASE WHEN ${knownLineCostSql('l')} THEN l.cost_cents END AS costCents, l.discount_cents AS discountCents,
                c.display_name AS customerName, c.email AS customerEmail, c.phone AS customerPhone
         FROM ${reportSaleLinesSql} l
         LEFT JOIN commerce_products p ON p.organization_id = l.organization_id AND p.provider = l.provider AND p.connection_id = l.connection_id AND p.external_product_id = l.product_ref
         LEFT JOIN commerce_customers c ON c.organization_id = l.organization_id AND c.provider = l.provider AND c.connection_id = l.connection_id AND c.external_customer_id = l.customer_ref
         WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
-        ORDER BY l.sold_at DESC, l.external_sale_id DESC, l.external_line_id DESC LIMIT 1000
+        ORDER BY l.sold_at DESC, l.external_sale_id DESC, l.external_line_id DESC LIMIT 1001
       `).bind(context.organizationId, ...saleLocationBindings, ...currentWindow.bindings).all<Record<string, unknown>>(),
       canReadInventory ? database.prepare(`
         SELECT b.source_provider AS provider, b.source_connection_id AS connectionId, b.location_ref AS locationRef,
@@ -140,53 +151,59 @@ export async function GET(request: Request) {
         LEFT JOIN commerce_products p ON p.organization_id = b.organization_id AND p.provider = b.source_provider AND p.connection_id = b.source_connection_id AND p.sku = b.sku AND p.archived = 0 AND (SELECT count(*) FROM commerce_products unique_product WHERE unique_product.organization_id=b.organization_id AND unique_product.provider=b.source_provider AND unique_product.connection_id=b.source_connection_id AND unique_product.sku=b.sku AND unique_product.archived=0)=1
         LEFT JOIN (
           SELECT l.provider, l.connection_id, l.outlet_ref, l.sku, sum(l.quantity_milli) quantity_milli, sum(l.net_sales_cents) net_sales_cents,
-                 CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END cost_cents, sum(l.discount_cents) discount_cents
+                 ${completeLineCostSumSql('l')} cost_cents, sum(l.discount_cents) discount_cents
           FROM ${reportSaleLinesSql} l WHERE l.organization_id = ? AND ${currentWindow.sql}${saleLocationSql}
           GROUP BY l.provider, l.connection_id, l.outlet_ref, l.sku
         ) sales ON sales.provider = b.source_provider AND sales.connection_id = b.source_connection_id AND sales.sku = b.sku AND b.location_ref = sales.provider || ':' || sales.outlet_ref
         WHERE b.organization_id = ?${approved("b", "source_connection_id")}${inventoryLocationSql}
-        ORDER BY CASE WHEN b.on_hand_quantity <= 0 THEN 0 WHEN b.on_hand_quantity <= b.reorder_point THEN 1 ELSE 2 END, b.name COLLATE NOCASE LIMIT 2000
+        ORDER BY CASE WHEN b.on_hand_quantity <= 0 THEN 0 WHEN b.on_hand_quantity <= b.reorder_point THEN 1 ELSE 2 END, b.name COLLATE NOCASE LIMIT 2001
       `).bind(context.organizationId, ...currentWindow.bindings, ...saleLocationBindings, context.organizationId, ...inventoryLocationBindings).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
       canReadCustomerTotals ? database.prepare(`
         SELECT c.provider, c.connection_id AS connectionId, c.external_customer_id AS externalCustomerId, c.display_name AS displayName,
                c.email, c.phone, c.source_updated_at AS sourceUpdatedAt,
                count(DISTINCT l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id) AS transactionCount,
-               coalesce(sum(l.net_sales_cents), 0) AS netSalesCents, CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS costCents,
+               coalesce(sum(l.net_sales_cents), 0) AS netSalesCents, ${completeLineCostSumSql('l')} AS costCents,
                coalesce(sum(l.discount_cents), 0) AS discountCents, max(l.sold_at) AS lastPurchaseAt
         FROM commerce_customers c
         LEFT JOIN ${reportSaleLinesSql} l ON l.organization_id = c.organization_id AND l.provider = c.provider AND l.connection_id = c.connection_id
           AND l.customer_ref = c.external_customer_id AND ${currentWindow.sql}${saleLocationSql}
-        WHERE c.organization_id = ? AND c.archived = 0${approved("c")}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
+        WHERE c.organization_id = ? AND c.archived = 0${approved("c")}${requestedConnectionId?" AND c.connection_id=?":""}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
         GROUP BY c.provider, c.connection_id, c.external_customer_id
-        ORDER BY netSalesCents DESC, c.display_name COLLATE NOCASE LIMIT 1000
-      `).bind(...currentWindow.bindings, ...saleLocationBindings, context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+        ORDER BY netSalesCents DESC, c.display_name COLLATE NOCASE LIMIT 1001
+      `).bind(...currentWindow.bindings, ...saleLocationBindings, context.organizationId,...(requestedConnectionId?[requestedConnectionId]:[])).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
       canReadSuppliers ? database.prepare(`
         SELECT s.provider, s.connection_id AS connectionId, s.external_supplier_id AS externalSupplierId, s.name, s.account_number AS accountNumber,
                s.contact_name AS contactName, s.email, s.phone, s.source_updated_at AS sourceUpdatedAt,
                count(DISTINCT p.external_product_id) AS productCount,
                coalesce(sum(l.quantity_milli), 0) AS periodQuantityMilli,
                coalesce(sum(l.net_sales_cents), 0) AS periodNetSalesCents,
-               CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS periodCostCents
+               ${completeLineCostSumSql('l')} AS periodCostCents
         FROM commerce_suppliers s
         LEFT JOIN commerce_products p ON p.organization_id = s.organization_id AND p.provider = s.provider AND p.connection_id = s.connection_id AND p.supplier_ref = s.external_supplier_id AND p.archived = 0
         LEFT JOIN ${reportSaleLinesSql} l ON l.organization_id = p.organization_id AND l.provider = p.provider AND l.connection_id = p.connection_id
           AND l.product_ref = p.external_product_id AND ${currentWindow.sql}${saleLocationSql}
-        WHERE s.organization_id = ? AND s.archived = 0${approved("s")}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
+        WHERE s.organization_id = ? AND s.archived = 0${approved("s")}${requestedConnectionId?" AND s.connection_id=?":""}${restricted ? " AND l.external_line_id IS NOT NULL" : ""}
         GROUP BY s.provider, s.connection_id, s.external_supplier_id
-        ORDER BY periodNetSalesCents DESC, s.name COLLATE NOCASE LIMIT 1000
-      `).bind(...currentWindow.bindings, ...saleLocationBindings, context.organizationId).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
+        ORDER BY periodNetSalesCents DESC, s.name COLLATE NOCASE LIMIT 1001
+      `).bind(...currentWindow.bindings, ...saleLocationBindings, context.organizationId,...(requestedConnectionId?[requestedConnectionId]:[])).all<Record<string, unknown>>() : Promise.resolve({ results: [] }),
       database.prepare(`
         SELECT json_array(l.provider, l.connection_id, coalesce(l.product_ref, l.sku, l.product_name, 'unclassified')) AS productRef,
                coalesce(max(l.product_name), max(l.sku), 'Unclassified item') AS name,
                sum(l.quantity_milli) AS quantityMilli, sum(l.net_sales_cents) AS netSalesCents,
-               CASE WHEN count(l.external_line_id)>0 AND sum(CASE WHEN l.cost_cents IS NULL OR l.cost_cents=0 THEN 1 ELSE 0 END)=0 THEN sum(l.cost_cents) END AS costCents, sum(l.discount_cents) AS discountCents,
+               ${completeLineCostSumSql('l')} AS costCents, sum(l.discount_cents) AS discountCents,
                count(DISTINCT l.provider || char(0) || l.connection_id || char(0) || l.external_sale_id) AS transactionCount
         FROM ${reportSaleLinesSql} l
         WHERE l.organization_id = ?${approved("l")}${saleLocationSql}${salePeriodSql}
         GROUP BY l.provider, l.connection_id, coalesce(l.product_ref, l.sku, l.product_name, 'unclassified')
-        ORDER BY netSalesCents DESC LIMIT 250
+        ORDER BY netSalesCents DESC LIMIT 251
       `).bind(context.organizationId, ...saleLocationBindings, ...currentWindow.bindings).all<Record<string, unknown>>(),
     ]);
+
+    const displayedEvidence={saleLines:(lineRows.results??[]).length<=1000,inventory:(inventoryRows.results??[]).length<=2000,
+      customers:(customerRows.results??[]).length<=1000,suppliers:(supplierRows.results??[]).length<=1000,products:(productRows.results??[]).length<=250};
+    const relevantEvidence=mode==="Sales"?displayedEvidence.products:mode==="Inventory"?displayedEvidence.inventory:mode==="Customers"?displayedEvidence.customers:displayedEvidence.suppliers;
+    if(requestedConnectionId&&!relevantEvidence) throw new ApiError(413,"COMMERCE_SOURCE_EVIDENCE_LIMIT",
+      "This source selection exceeds the complete-record view limit. Narrow the dates or location, then try again.");
 
     const normalizeMetric = (row: MetricRow | null) => {
       const netSalesCents = Number(row?.netSalesCents ?? 0);
@@ -210,7 +227,7 @@ export async function GET(request: Request) {
     };
     const current = normalizeMetric(currentRaw);
     const comparison = normalizeMetric(comparisonRaw);
-    const inventory = (inventoryRows.results ?? []).map((row) => {
+    const inventory = (inventoryRows.results ?? []).slice(0,2000).map((row) => {
       const onHand = Number(row.onHandQuantity ?? 0);
       const reorderPoint = Number(row.reorderPoint ?? 0);
       const unitsSold = Number(row.periodQuantityMilli ?? 0) / 1000;
@@ -251,7 +268,7 @@ export async function GET(request: Request) {
         recommendedOrderUnits: forward ? decision.recommendedOrderUnits : null,
       };
     });
-    const safeLines = (lineRows.results ?? []).map((row) => {
+    const safeLines = (lineRows.results ?? []).slice(0,1000).map((row) => {
       const net = Number(row.netSalesCents ?? 0);
       const cost = row.costCents == null ? null : Number(row.costCents);
       return {
@@ -265,7 +282,7 @@ export async function GET(request: Request) {
         marginRate: canViewVerifiedProfit && cost != null && net > 0 ? (net - cost) / net : null,
       };
     });
-    const customers = (customerRows.results ?? []).map((row) => {
+    const customers = (customerRows.results ?? []).slice(0,1000).map((row) => {
       const transactions = Number(row.transactionCount ?? 0);
       const net = Number(row.netSalesCents ?? 0);
       const cost = row.costCents == null ? null : Number(row.costCents);
@@ -280,7 +297,7 @@ export async function GET(request: Request) {
         averageTransactionCents: transactions ? Math.round(net / transactions) : null,
       };
     });
-    const suppliers = (supplierRows.results ?? []).map((row) => {
+    const suppliers = (supplierRows.results ?? []).slice(0,1000).map((row) => {
       const net = Number(row.periodNetSalesCents ?? 0);
       const cost = row.periodCostCents == null ? null : Number(row.periodCostCents);
       return {
@@ -291,7 +308,7 @@ export async function GET(request: Request) {
         lowStockItems: inventory.filter((item) => item.provider === row.provider && item.connectionId === row.connectionId && item.supplierRef === row.externalSupplierId && item.stockStatus !== "healthy").length,
       };
     });
-    const products = (productRows.results ?? []).map((row) => {
+    const products = (productRows.results ?? []).slice(0,250).map((row) => {
       const net = Number(row.netSalesCents ?? 0);
       const cost = row.costCents == null ? null : Number(row.costCents);
       const discounts = Number(row.discountCents ?? 0);
@@ -346,7 +363,17 @@ export async function GET(request: Request) {
         manageCosts: canManageCosts,
         importCosts: canImportCosts,
       },
-      profitAvailability: !canViewVerifiedProfit ? "permission_required" : current.grossProfitCents != null ? "verified" : "Complete verified line costs are required. Unknown legacy zero costs are withheld.",
+      profitAvailability: !canViewVerifiedProfit ? "permission_required" : current.grossProfitCents != null ? "recorded_costs_complete" : "Complete attributable line costs are required. Missing costs are withheld.",
+      sourceScope:{connectionId:requestedConnectionId,provider:providerScope?.provider??null,accountName:providerScope?.accountName??null,
+        locationId:locationAccess.selectedLocation?.id??null,locationIds:providerScope?.locationIds??[...new Set(selectedSalesScopes.map(scope=>scope.localLocationId))],
+        from:period.from,to:period.to,timeZone:context.organization.timezone,currency:context.organization.currency,
+        sourceMode:requestedConnectionId?"provider_specific":"canonical"},
+      readiness:{ready:false,certification:"not_certified",recordedDataAvailable:true,databaseViewComplete:relevantEvidence,
+        displayedEvidence,providerPaginationComplete:null,reconciliation:"not_verified",calculationVersion:"commerce-recorded-v2",
+        limitations:["Recorded facts are scoped to the selected period and permitted locations. Provider completeness, late records and reconciliation are not certified.",
+          "No currency conversion is performed. Stock is a dated current snapshot; customer activity is not lifetime retention; supplier coverage is not delivery performance.",
+          ...(!displayedEvidence.saleLines?["The transaction preview shows the newest 1,000 lines. Aggregated product totals use all stored matching lines."]:[]),
+          ...(!relevantEvidence?["This dashboard preview is limited. Narrow the dates or location for a complete source report."]:[])]},
       locationScope: restricted ? { id: locationAccess.selectedLocation?.id ?? "accessible", name: locationAccess.selectedLocation?.name ?? "Accessible locations" } : null,
     };
     return jsonResponse(commerceResponseForMode(mode as CommerceViewMode, response));

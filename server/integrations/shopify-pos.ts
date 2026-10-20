@@ -118,7 +118,7 @@ export async function shopifyGraphql<T>(organizationId: string, connectionId: st
 }
 
 export async function fetchShopifyIdentity(organizationId: string, connectionId: string, shop: string, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
-  return shopifyGraphql<{ shop: { id: string; name: string; myshopifyDomain: string } }>(organizationId, connectionId, shop, `query VanteloqShop { shop { id name myshopifyDomain } }`, {}, fetch, provider);
+  return shopifyGraphql<{ shop: { id: string; name: string; myshopifyDomain: string; currencyCode: string } }>(organizationId, connectionId, shop, `query VanteloqShop { shop { id name myshopifyDomain currencyCode } }`, {}, fetch, provider);
 }
 export async function fetchShopifyLocations(organizationId: string, connectionId: string, shop: string, provider: ShopifyProvider = SHOPIFY_POS_PROVIDER) {
   const data = await shopifyGraphql<{ locations: { nodes: Array<{ id: string; name: string; isActive: boolean }> } }>(organizationId, connectionId, shop, `query VanteloqLocations { locations(first: 100) { nodes { id name isActive } } }`, {}, fetch, provider);

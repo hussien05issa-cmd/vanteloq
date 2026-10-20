@@ -1,3 +1,4 @@
+import { requireIntegrationCallbackAccess, releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { requireOAuthBrowser } from "../../../../../../server/integrations/oauth-browser";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
@@ -28,6 +29,7 @@ export async function GET(request: Request) {
       .where(and(eq(users.id, stored.actorUserId), eq(users.status, "active"), eq(memberships.status, "active"))).limit(1);
     if (!actor || (actor.role !== "owner" && actor.role !== "admin")) throw new ApiError(403, "SQUARE_INITIATOR_INELIGIBLE", "The account that started this connection can no longer manage integrations.");
     const context: AccessContext = { identity: { email: actor.email, displayName: actor.displayName, subject: actor.authSubject, provider: actor.authProvider ?? "sites", emailVerified: true, assuranceLevel: null, sessionId: null }, userId: actor.userId, organizationId: actor.organizationId, role: actor.role, authSubject: actor.authSubject, authProvider: actor.authProvider, organization: actor.organization };
+    await requireIntegrationCallbackAccess(context, "square", stored.connectionId);
     await requirePermission(context, "integrations.manage");
     const [consumed] = await getDb().update(integrationOAuthStates).set({ consumedAt: now }).where(and(eq(integrationOAuthStates.stateHash, stateHash), eq(integrationOAuthStates.provider, SQUARE_PROVIDER), isNull(integrationOAuthStates.consumedAt), gt(integrationOAuthStates.expiresAt, now))).returning({ stateHash: integrationOAuthStates.stateHash });
     if (!consumed) throw new ApiError(400, "SQUARE_STATE_INVALID", "The Square connection attempt expired or was already used.");
@@ -43,6 +45,7 @@ export async function GET(request: Request) {
         eq(integrationConnections.provider, SQUARE_PROVIDER), eq(integrationConnections.status, "pending"),
       ));
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.authorization_declined", resourceType: "integration", resourceId: connectionId, details: { provider: SQUARE_PROVIDER } });
+      await releaseIntegrationSelectionIfUnused(context.organizationId, SQUARE_PROVIDER);
       return Response.redirect(returnUrl(request, "declined"), 303);
     }
     let finalized = false;
@@ -80,7 +83,7 @@ export async function GET(request: Request) {
       const errorCode = error instanceof ApiError ? error.code : "SQUARE_CONNECTION_FAILED";
       await getDb().delete(integrationSecrets).where(and(eq(integrationSecrets.organizationId, context.organizationId), eq(integrationSecrets.provider, SQUARE_PROVIDER), eq(integrationSecrets.connectionId, connectionId)));
       await getDb().delete(integrationLocationMappings).where(and(eq(integrationLocationMappings.organizationId, context.organizationId), eq(integrationLocationMappings.provider, SQUARE_PROVIDER), eq(integrationLocationMappings.connectionId, connectionId)));
-      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", lastErrorCode: errorCode, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER)));
+      await getDb().update(integrationConnections).set({ status: "error", dataPromotionStatus: "blocked", lastErrorCode: errorCode, updatedAt: new Date() }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId), eq(integrationConnections.provider, SQUARE_PROVIDER), eq(integrationConnections.status, "pending")));
       await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.connection_failed", resourceType: "integration", resourceId: connectionId, details: { provider: SQUARE_PROVIDER, errorCode } });
       return Response.redirect(returnUrl(request, "failed"), 303);
     }

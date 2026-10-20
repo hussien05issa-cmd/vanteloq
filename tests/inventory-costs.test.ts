@@ -18,7 +18,10 @@ test("inventory costs are durable, tenant scoped, permission checked and audited
   assert.match(route, /WHERE p\.organization_id = \?/);
   assert.match(route, /inventory\.costs_imported/);
   assert.match(route, /INVENTORY_COST_REVIEW_REQUIRED/);
-  assert.match(helper, /product\.owner_cost_cents \* commerce_sale_lines\.quantity_milli/);
+  assert.match(helper, /inventory\.cost_effective/);
+  assert.match(helper, /effectiveAtMs/);
+  assert.match(route, /prepareOwnerCostChange/);
+  assert.match(route, /historicalCostsPreserved: true/);
   assert.match(helper, /UPDATE daily_business_metrics AS metric/);
 });
 
@@ -30,8 +33,10 @@ test("manual and CSV cost workflows require review and survive connector refresh
     source("server/integrations/sync/lightspeed-r.ts"),
   ]);
   assert.match(workspace, /Download template/);
-  assert.match(workspace, /Choose cost CSV/);
-  assert.match(workspace, /Save \$\{costPreview\.length\} costs/);
+  assert.match(workspace, /Import product cost CSV/);
+  assert.match(workspace, /Import product cost CSV \(\$\{costPreview\.length\} costs\)/);
+  assert.match(workspace, /inventoryCostRequest\(source, entries, costPrivacyAccepted\)/);
+  assert.match(workspace, /ReportImportPrivacyNotice accepted=\{costPrivacyAccepted\}/);
   assert.match(workspace, /saveManualCost\(row\)/);
   assert.match(workspace, /Unit cost/);
   for (const connector of [square, clover, lightspeed]) {

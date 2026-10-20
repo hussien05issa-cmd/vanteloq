@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useState } from "react";
+import { useId, useState } from "react";
 import type { OperatingDecision } from "../server/operating-system";
 import { reviewDisplayStatus, reviewIsActive, type OpportunityReview } from "../domain/opportunity-review";
 import OpportunityReviewPanel, { type ReviewChange } from "./opportunity-review-panel";
@@ -36,10 +36,15 @@ export default function DecisionWorkspace({ initialSelection, decisions, period,
   const id = useId();
   const [category, setCategory] = useState("all");
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState("active");
-  const [detailTab, setDetailTab] = useState("evidence");
-  useEffect(() => { if (initialSelection) { setSelectedId(initialSelection.id); setView("all"); setCategory("all"); setQuery(""); setDetailTab(initialSelection.followup ? "followup" : "evidence"); } }, [initialSelection]);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSelection?.id ?? null);
+  const [view, setView] = useState(initialSelection ? "all" : "active");
+  const [detailTab, setDetailTab] = useState(initialSelection?.followup ? "followup" : "evidence");
+  const [previousSelection, setPreviousSelection] = useState(initialSelection);
+  // Apply an external selection before rendering stale filters or detail content.
+  if (initialSelection !== previousSelection) {
+    setPreviousSelection(initialSelection);
+    if (initialSelection) { setSelectedId(initialSelection.id); setView("all"); setCategory("all"); setQuery(""); setDetailTab(initialSelection.followup ? "followup" : "evidence"); }
+  }
   const entries = decisions.map(decision => {
     const review = reviews.find(review => review.ruleId === decision.id && review.period.from === period?.from && review.period.to === period?.to);
     return { key: review?.id ?? decision.id, decision: review?.snapshot ?? decision, review };

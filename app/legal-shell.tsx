@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import ProductBrandLogo from "./product-brand-logo";
+import PublicSurface from "./public-surface";
 import { LEGAL_DOCUMENT_UPDATED_LABEL } from "../shared/legal-versions";
 
 export const LEGAL_UPDATED = LEGAL_DOCUMENT_UPDATED_LABEL;
@@ -20,11 +21,11 @@ export function LegalShell({
   updated?: string;
 }) {
   return (
-    <div className="legal-site">
+    <PublicSurface className="legal-site">
       <header className="legal-header">
         <Link className="legal-brand" href="/" aria-label="Vanteloq home">
           <ProductBrandLogo product="vanteloq" priority />
-          <span>Vanteloq<small>LEGAL CENTRE</small></span>
+          <span>Legal centre</span>
         </Link>
         <nav aria-label="Legal navigation">
           <Link href="/legal">Legal centre</Link>
@@ -44,11 +45,11 @@ export function LegalShell({
             <span>{summary}</span>
             <dl>
               <div><dt>Last updated</dt><dd>{updated}</dd></div>
-              <div><dt>Operator</dt><dd>2855706 ALBERTA INC, doing business as LexEdge Consulting and operating Vanteloq</dd></div>
+              <div><dt>Operator</dt><dd>Vanteloq Inc.</dd></div>
             </dl>
           </div>
           <aside aria-label="Document principles">
-            <div className="legal-principle-art" aria-hidden="true"><i/><i/><i/></div>
+            <div className="legal-document-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6M8 13h8M8 17h5"/></svg></div>
             <strong>Plain language, visible limits, real contacts.</strong>
             <p>These documents describe the service as it operates today. They do not claim certifications, providers, or rights that have not been verified.</p>
           </aside>
@@ -68,11 +69,11 @@ export function LegalShell({
       </main>
 
       <footer className="legal-footer">
-        <div><ProductBrandLogo product="vanteloq"/><span><strong>Vanteloq</strong><small>2855706 ALBERTA INC · LexEdge Consulting</small></span></div>
+        <div><ProductBrandLogo product="vanteloq"/><span><small>Vanteloq Inc.</small></span></div>
         <nav aria-label="Legal footer navigation"><Link href="/">Home</Link><Link href="/resources">Resources</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/cookies">Cookies</Link><Link href="/data-processing">Data processing</Link><Link href="/subprocessors">Subprocessors</Link></nav>
         <p>Questions about these documents can be sent through <LegalContactLink/>.</p>
       </footer>
-    </div>
+    </PublicSurface>
   );
 }
 

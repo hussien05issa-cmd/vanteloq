@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import postcss from "postcss";
 import ts from "typescript";
 import workspaceAnchors from "../build/workspace-style-anchors.json" with { type: "json" };
 import { publicSurfaceCss } from "../build/public-surface-css.mjs";
+import WorkspacePage from "../app/workspace/page";
 
 const workspace = resolve("app/vanteloq-app.tsx");
 const styleEntry = resolve("app/workspace-styles.ts");
@@ -54,7 +57,9 @@ test("public style projection removes only audited non-public selectors", () => 
     .filter(file => routeEntry.test(file)).map(file => resolve("app", file));
   const publicSource = [...runtimeGraph(entries, true, true)].filter(file => !file.endsWith(".css"))
     .map(file => source(file).replace(/^import[^;]+;/gm, "")).join("\n");
-  for (const anchor of workspaceAnchors) assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w-])${anchor}(?![\\w-])`), `Public/auth/demo code now needs ${anchor}; remove it from workspace-only anchors.`);
+  // A shared component may inspect a workspace ancestor with '.class' without
+  // rendering that class or requiring its layout stylesheet in public views.
+  for (const anchor of workspaceAnchors) assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w.-])${anchor}(?![\\w-])`), `Public/auth/demo code now needs ${anchor}; remove it from workspace-only anchors.`);
   const input = `@font-face{font-family:test;src:url(test.woff2)}
     :root{--shared:1}.primary{color:navy}
     @media(max-width:600px){.operating-shell .primary{color:blue}.public-site .primary{color:black}}
@@ -76,6 +81,19 @@ test("the complete original cascade is ready before rendering the workspace", ()
   const app = source(workspace);
   assert.ok(app.indexOf('import "./workspace-base-styles"') < app.indexOf('import "./workspace-styles"'));
   assert.ok(!runtimeGraph([resolve("app/page.tsx")], false).has(resolve("app/workspace-base-styles.ts")));
+});
+
+test("the public Workspace brochure keeps its hero without receiving legacy private hero styling", () => {
+  const html = renderToStaticMarkup(createElement(WorkspacePage));
+  assert.match(html, /<section class="workspace-hero" aria-labelledby="workspace-title">/);
+  const projected = publicSurfaceCss(source(resolve("app/globals.css")));
+  const leakedSelectors: string[] = [];
+  postcss.parse(projected).walkRules(rule => {
+    for (const selector of rule.selectors) {
+      if (/\.workspace-hero(?![\w-])/.test(selector)) leakedSelectors.push(selector);
+    }
+  });
+  assert.deepEqual(leakedSelectors, [], "Legacy private hero declarations must stay out of the public shared CSS projection.");
 });
 
 test("public chart reuse retains marker and explorer controls without workspace layout rules", () => {
@@ -108,7 +126,7 @@ test("workspace CSS is excluded from public, demo and authentication import grap
       for (const selector of rule.selectors) {
         const requiredClass = selector.trim().match(/^(?:body:has\()?\.([a-zA-Z_][\w-]*)/)?.[1];
         assert.ok(requiredClass, `Global selector cannot be deferred: ${selector}`);
-        assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w-])${requiredClass}(?![\\w-])`), `Public code references ${requiredClass} from ${file}`);
+        assert.doesNotMatch(publicSource, new RegExp(`(?<![\\w.-])${requiredClass}(?![\\w-])`), `Public code references ${requiredClass} from ${file}`);
       }
     });
   }

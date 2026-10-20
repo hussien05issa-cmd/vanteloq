@@ -7,6 +7,7 @@ import { authorizedLocationDataScope } from "../../../../../server/location-acce
 import { ApiError, enforceRateLimit, handleApi, jsonResponse } from "../../../../../server/api";
 import { businessClock } from "../../../../../domain/intraday-sales";
 import { buildCollectionsDashboard, collectionBuckets, filterCollections, type CollectionRecord, type CollectionsFilter } from "../../../../../domain/collections-dashboard";
+import { buildDecisionCards } from "../../../../../domain/decision-cards";
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
@@ -46,10 +47,16 @@ export async function GET(request: Request) {
     const filterValue = params.get("filter") ?? "all";
     const filter = (["all", "overdue", "due", "disputed", "unapproved", ...collectionBuckets] as string[]).includes(filterValue) ? filterValue as CollectionsFilter : "all";
     const safeRecords = records.map(r => access.contactIdentity ? r : { ...r, contactId: "", contactName: r.kind === "receivable" ? "Customer" : "Supplier" });
+    const sourceRecords = (results.results ?? []).map(r => access.contactIdentity ? r : { ...r, contactId: "", contactName: r.kind === "receivable" ? "Customer" : "Supplier" });
+    const decisionCards = buildDecisionCards({ asOf, currency, kinds: ["overdue_invoices", "bills_due"], collections: {
+      records: sourceRecords,
+      context: { period: { from: asOf, to: asOf }, asOf, currency, freshness: "current", coverage: "complete",
+        sources: [{ system: demonstration ? "BookLoQ fictional documents" : "BookLoQ current invoice and bill records", currency, recordCount: sourceRecords.length, recordIds: sourceRecords.map(r => `${r.kind}:${r.id}`) }] },
+    } });
     const filtered = filterCollections(safeRecords, kind, filter, asOf, horizon, (params.get("q") ?? "").slice(0, 120));
     const requestedPage = Number(params.get("page") ?? 0);
     const page = Math.min(Math.max(0, Number.isSafeInteger(requestedPage) ? requestedPage : 0), Math.max(0, Math.ceil(filtered.length / 25) - 1));
     return jsonResponse({ report: { ...report, largestCustomer: access.contactIdentity ? report.largestCustomer : report.largestCustomer ? { ...report.largestCustomer, contactId: "", contactName: "One customer" } : null },
-      records: filtered.slice(page * 25, (page + 1) * 25), total: filtered.length, page, pageSize: 25, kind, filter, demonstration });
+      records: filtered.slice(page * 25, (page + 1) * 25), total: filtered.length, page, pageSize: 25, kind, filter, demonstration, decisionCards });
   });
 }

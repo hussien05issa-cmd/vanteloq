@@ -7,6 +7,7 @@ import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, re
 import { allPermissions, effectivePermissions, permissionCatalogDto, requirePermission, roleTemplates, type PermissionKey } from "../../../../server/permissions";
 import { hashPin, validateTemporaryPin } from "../../../../server/pin";
 import { canAddLocation, canAddUser, requireFeature } from "../../../../server/entitlements/engine";
+import { authorizedLocationScope } from "../../../../server/location-access";
 
 const governanceUsers = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const governanceReadPermissions = [
@@ -85,11 +86,19 @@ async function governancePermissions(context: Awaited<ReturnType<typeof requireA
 
 type GovernanceContext = Awaited<ReturnType<typeof requireAccess>>;
 
+async function requireLocationDelegation(context: GovernanceContext, locationIds: readonly string[], unrestricted = false) {
+  const access = await authorizedLocationScope(context, null);
+  if (!access.organizationWide && (unrestricted || locationIds.some((id) => !access.locations.some((location) => location.id === id)))) {
+    throw new ApiError(403, "ROLE_LOCATION_DELEGATION_EXCEEDED", "You cannot grant access to locations outside your own access.");
+  }
+}
+
 async function validateEmployeeRelationships(
   organizationId: string,
   managerMemberId: string,
   primaryLocationId: string,
   permittedLocations: string[],
+  context?: GovernanceContext,
 ) {
   if (managerMemberId) {
     const [manager] = await getDb().select({ id: teamMembers.id, status: teamMembers.status }).from(teamMembers).where(and(
@@ -100,6 +109,7 @@ async function validateEmployeeRelationships(
   }
 
   const locationIds = [...new Set([primaryLocationId, ...permittedLocations].filter(Boolean))];
+  if (context) await requireLocationDelegation(context, locationIds);
   if (locationIds.length) {
     const locations = await getDb().select({ id: organizationLocations.id }).from(organizationLocations).where(and(
       eq(organizationLocations.organizationId, organizationId),
@@ -124,12 +134,14 @@ async function validateRoleDelegation(context: GovernanceContext, permissions: s
   if (context.role !== "owner" && requested.includes("organization.ownership")) {
     throw new ApiError(403, "OWNERSHIP_PERMISSION_PROTECTED", "Only the account owner can delegate ownership controls.");
   }
+  // An empty role scope means no location restriction, not no locations.
+  await requireLocationDelegation(context, locationScope, locationScope.length === 0);
   const relationships = await validateEmployeeRelationships(context.organizationId, "", "", locationScope);
   return { permissions: requested, locationScope: relationships.permittedLocations };
 }
 
 async function assignableRole(context: GovernanceContext, roleId: string) {
-  const [role] = await getDb().select({ id: accessRoles.id, systemKey: accessRoles.systemKey, permissionsJson: accessRoles.permissionsJson }).from(accessRoles).where(and(
+  const [role] = await getDb().select({ id: accessRoles.id, systemKey: accessRoles.systemKey, permissionsJson: accessRoles.permissionsJson, locationScopeJson: accessRoles.locationScopeJson }).from(accessRoles).where(and(
     eq(accessRoles.id, roleId),
     eq(accessRoles.organizationId, context.organizationId),
     eq(accessRoles.archived, false),
@@ -137,7 +149,7 @@ async function assignableRole(context: GovernanceContext, roleId: string) {
   if (!role) throw new ApiError(400, "INVALID_FIELD", "Select a valid role.");
   if (role.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "Account ownership must use the dedicated ownership-transfer workflow.");
   const delegated = jsonArray(JSON.parse(role.permissionsJson));
-  await validateRoleDelegation(context, delegated, []);
+  await validateRoleDelegation(context, delegated, jsonArray(JSON.parse(role.locationScopeJson)));
   return { ...role, permissions: delegated };
 }
 
@@ -376,6 +388,7 @@ export async function POST(request: Request) {
         string(input.managerMemberId, "manager", 200, false),
         string(input.primaryLocationId, "primary location", 200, false),
         jsonArray(input.permittedLocations),
+        context,
       );
       const employeeInsert = await database.prepare(`INSERT INTO team_members
         (id, organization_id, role_id, first_name, last_name, preferred_name, email, mobile, employee_code, job_title, department, employment_type, start_date, manager_member_id, primary_location_id, permitted_locations_json, status, remote_login, require_mfa, pin_enabled, notes, created_by_user_id, created_at, updated_at)
@@ -438,6 +451,10 @@ export async function POST(request: Request) {
         if (!existing) throw new ApiError(404, "ROLE_NOT_FOUND", "Role not found in this organization.");
         if (existing.systemKey === "account_owner") throw new ApiError(409, "OWNER_ROLE_PROTECTED", "The Account Owner role cannot be changed.");
         if (existing.systemKey) throw new ApiError(409, "SYSTEM_ROLE_PROTECTED", "Built-in roles cannot be changed. Create a custom role instead.");
+        const [ownRole] = await getDb().select({ id: teamMembers.id }).from(teamMembers).where(and(
+          eq(teamMembers.organizationId, context.organizationId), eq(teamMembers.userId, context.userId), eq(teamMembers.roleId, roleId),
+        )).limit(1);
+        if (ownRole) throw new ApiError(409, "SELF_ROLE_CHANGE_FORBIDDEN", "You cannot change your own access role.");
         await database.prepare("UPDATE access_roles SET name = ?, description = ?, color = ?, permissions_json = ?, location_scope_json = ?, updated_at = ? WHERE id = ? AND organization_id = ? AND system_key IS NULL").bind(...values, roleId, context.organizationId).run();
       } else {
         await database.prepare(`INSERT INTO access_roles

@@ -5,7 +5,7 @@ import { getDb } from "../../../../../../db";
 import { and, eq, inArray } from "drizzle-orm";
 import { integrationConnections, integrationOAuthStates } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess, integrationGrantId } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { buildShopifyAuthorizationUrl, newShopifyState, normalizeShopDomain, SHOPIFY_API_VERSION, SHOPIFY_POS_PROVIDER, SHOPIFY_POS_READ_SCOPES, SHOPIFY_PROVIDER, shopifyProviderFromRequest, shopifySha256 } from "../../../../../../server/integrations/shopify-pos";
 import { requirePermission } from "../../../../../../server/permissions";
@@ -15,7 +15,7 @@ export async function POST(request: Request) {
     const provider = shopifyProviderFromRequest(request);
     const providerLabel = provider === SHOPIFY_POS_PROVIDER ? "Shopify POS" : "Shopify e-commerce";
     requireSameOrigin(request);
-    const context = await requireAccess(request, ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin"], provider, true);
     await requirePermission(context, "integrations.manage");
     await requireIntegrationRollout(context, provider);
     await enforceRateLimit(`${provider}:authorize`, context.userId, 10, 3600);
@@ -35,7 +35,8 @@ export async function POST(request: Request) {
       await getDb().delete(integrationOAuthStates).where(and(eq(integrationOAuthStates.organizationId, context.organizationId), eq(integrationOAuthStates.provider, provider), eq(integrationOAuthStates.connectionId, connectionId)));
       await getDb().update(integrationConnections).set({ status: "pending", externalAccountRef: shop, externalAccountName: `New ${providerLabel} store`, domainPrefix: shop, apiVersion: SHOPIFY_API_VERSION, scopesJson: JSON.stringify(SHOPIFY_POS_READ_SCOPES), dataPromotionStatus: "blocked", connectedAt: null, lastErrorCode: null, updatedAt: now }).where(and(eq(integrationConnections.id, connectionId), eq(integrationConnections.organizationId, context.organizationId)));
     } else {
-      await getDb().insert(integrationConnections).values({ id: connectionId, organizationId: context.organizationId, provider, sourceNamespace: connectionId, status: "pending", externalAccountRef: shop, externalAccountName: `New ${providerLabel} store`, domainPrefix: shop, apiVersion: SHOPIFY_API_VERSION, scopesJson: JSON.stringify(SHOPIFY_POS_READ_SCOPES), dataPromotionStatus: "blocked", connectedAt: null, lastSuccessfulSyncAt: null, lastSyncCursor: null, lastErrorCode: null, createdAt: now, updatedAt: now });
+      await getDb().insert(integrationConnections).values({
+      freeGrantId: await integrationGrantId(context, provider), id: connectionId, organizationId: context.organizationId, provider, sourceNamespace: connectionId, status: "pending", externalAccountRef: shop, externalAccountName: `New ${providerLabel} store`, domainPrefix: shop, apiVersion: SHOPIFY_API_VERSION, scopesJson: JSON.stringify(SHOPIFY_POS_READ_SCOPES), dataPromotionStatus: "blocked", connectedAt: null, lastSuccessfulSyncAt: null, lastSyncCursor: null, lastErrorCode: null, createdAt: now, updatedAt: now });
     }
     await getDb().insert(integrationOAuthStates).values({ stateHash: await shopifySha256(state), organizationId: context.organizationId, actorUserId: context.userId, provider, connectionId, expiresAt, consumedAt: null, createdAt: now });
     await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "integration.authorization_started", resourceType: "integration", resourceId: connectionId, details: { provider, shop, scopes: SHOPIFY_POS_READ_SCOPES.join(","), expiresInSeconds: 600 } });

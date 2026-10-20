@@ -7,6 +7,7 @@ import { getTenantEntitlements, requireFeatureEntitlement, requireTenantServiceA
 import { bootstrapFounderInternalAccess } from "./internal-access";
 import { liveTeamMembershipAllowed } from "./team-invitations";
 import { requireActiveWorkspaceSession } from "./session-policy";
+import { requestedBusinessContext } from "../domain/business-context";
 
 export type Role = "owner" | "admin" | "manager" | "employee" | "read_only" | "integration";
 
@@ -20,8 +21,13 @@ export type AccessContext = {
   organization: typeof workspaces.$inferSelect;
 };
 
-export async function findAccessContext(identity: TrustedIdentity, request?: Request): Promise<AccessContext | null> {
-  const [row] = await getDb()
+type AccessResolutionOptions = { bindLegacyIdentity?: boolean; bootstrapInternalAccess?: boolean };
+
+export async function findAccessContext(identity: TrustedIdentity, request?: Request, options: AccessResolutionOptions = {}): Promise<AccessContext | null> {
+  let workspace: string | null = null;
+  try { workspace = request ? requestedBusinessContext(request) : null; }
+  catch (error) { throw new ApiError(400, "WORKSPACE_CONTEXT_INVALID", error instanceof Error ? error.message : "Choose a valid business."); }
+  const rows = await getDb()
     .select({
       userId: users.id,
       authSubject: users.authSubject,
@@ -37,12 +43,17 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     .innerJoin(workspaces, eq(workspaces.id, memberships.organizationId))
     .where(and(identity.provider === "supabase" && identity.subject
       ? or(and(eq(users.authSubject, identity.subject), eq(users.authProvider, "supabase")),
-          and(eq(users.email, identity.email), isNull(users.authSubject)))
-      : eq(users.email, identity.email), eq(users.status, "active"), eq(memberships.status, "active")))
+          and(eq(users.email, identity.email), isNull(users.authSubject),
+            sql`NOT EXISTS (SELECT 1 FROM users canonical WHERE canonical.auth_subject=${identity.subject} AND canonical.auth_provider='supabase')`))
+      : eq(users.email, identity.email), eq(users.status, "active"), eq(memberships.status, "active"), workspace ? eq(workspaces.id, workspace) : undefined))
     .orderBy(identity.provider === "supabase" && identity.subject
       ? sql`CASE WHEN ${users.authSubject} = ${identity.subject} AND ${users.authProvider} = 'supabase' THEN 0 ELSE 1 END`
       : users.id)
-    .limit(1);
+    .limit(2);
+
+  if (rows.length > 1) throw new ApiError(409, "WORKSPACE_SELECTION_REQUIRED", "Select a business before continuing. No business was chosen automatically.");
+  const [row] = rows;
+  if (!row && workspace) throw new ApiError(403, "WORKSPACE_NOT_AVAILABLE", "This business is not available to your account. Open an authorized workspace.");
 
   if (!row) return null;
   if (!await liveTeamMembershipAllowed(request, identity, row.userId, row.organizationId, row.role)) return null;
@@ -50,6 +61,7 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     if (!identity.subject || !identity.emailVerified) return null;
     if (row.authSubject && (row.authSubject !== identity.subject || row.authProvider !== "supabase")) return null;
     if (!row.authSubject) {
+      if (options.bindLegacyIdentity === false) return null;
       try {
         await getDb().update(users).set({
           authSubject: identity.subject,
@@ -73,7 +85,7 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     organization: row.organization,
   };
   if (identity.provider === "supabase" && identity.assuranceLevel === "aal2") await requireActiveWorkspaceSession(context);
-  await bootstrapFounderInternalAccess(context);
+  if (options.bootstrapInternalAccess !== false) await bootstrapFounderInternalAccess(context);
   return context;
 }
 
@@ -81,9 +93,10 @@ async function requireWorkspaceMembership(
   request: Request,
   allowedRoles: readonly Role[],
   allowDeletion = false,
+  resolution: AccessResolutionOptions = {},
 ): Promise<AccessContext> {
   const identity = await requireIdentity(request);
-  const context = await findAccessContext(identity, request);
+  const context = await findAccessContext(identity, request, resolution);
   if (!context) throw new ApiError(403, "MEMBERSHIP_REQUIRED", "This account does not have access to a workspace.");
   requireAal2(identity);
   if (!allowedRoles.includes(context.role)) {
@@ -113,8 +126,9 @@ export async function requireAccess(
 export async function requireBillingAccess(
   request: Request,
   allowedRoles: readonly Role[],
+  resolution: AccessResolutionOptions = {},
 ): Promise<AccessContext> {
-  return requireWorkspaceMembership(request, allowedRoles);
+  return requireWorkspaceMembership(request, allowedRoles, false, resolution);
 }
 
 export async function requirePrivacyAccess(

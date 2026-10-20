@@ -1,55 +1,104 @@
-# Reference Theme QA
+# Cinematic hero interaction and Workspace reconciliation QA
 
-## Scope and Visual Source
+Date: October 16, 2026
 
-User-provided reference: `ChatGPT Image Sep 14, 2026, 09_53_17 AM.png`, 1536 x 1024. Implemented the light alpine composition, left-aligned two-line headline, navy glossy actions, frosted navigation, product image on the right, provider strip and four outlined feature cards. Existing Vanteloq, LexEdge, BookLoQ and AI brand assets remain the product identities.
+## Reference and scope
 
-The generated alpine artwork is an illustrative sample workspace, explicitly labelled in the interface. It is not a photograph of a customer account or a live report. Responsive WebP exports are 1832 x 859 (165,380 bytes) and 1200 x 562 (73,310 bytes). The real interactive demo remains separate and uses its existing deterministic calculations.
+Selected reference: C:/Users/User/.codex/codex-remote-attachments/01a12e40-4a37-7a12-8bc3-19bc9b23a406/CD1EDC16-EB1B-49A1-B25E-1F86CFD5CA21/1-Photo-1.jpg (1280 x 834 raster).
 
-## Viewports and Capture Normalization
+Adapt the reference's editorial composition, concise left copy, single prominent action and large product visual to Vanteloq. Preserve the supplied logos, Geist typography, exact animated source principle, signup/demo paths and full working dashboard. The user's correction supersedes the first still life: the product visual must show a cinematic business dashboard. Public appearance follows the device; internal Dark, Light and System choices remain available and independent.
 
-- Desktop layout checked at 1536 x 1024 CSS pixels.
-- Tablet checked at 768 x 1024; feature cards switch to two columns.
-- Phone checked at 390 x 844; navigation remains visible, copy precedes the image, and cards become one column.
-- AI and opportunity component fixtures checked at 960 x 800 with fictional records.
-- The desktop app initially cropped captures to its host panel and produced duplicate tiles in stitched screenshots. Those captures were rejected as visual evidence. A local QA-only iframe rendered the unchanged page at 1536 x 1024, scaled to 62.5% for capture. The source was normalized to the same 960 x 640 display size. Both full frames were inspected together. This harness is outside the application source and is not deployed.
-- Direct phone, AI settings and opportunity screenshots were also inspected. No content overflow was found in the tested document widths.
+## Version 391 baseline evidence
 
-## Iterations and Findings
+Local preview: http://127.0.0.1:5228/.
 
-1. Corrected inherited feature-section margins and width so the content aligns with the hero and provider strip.
-2. Corrected primary-button specificity so the navy glossy treatment overrides the earlier blue fill.
-3. Moved the photographic focal point to the top on desktop, keeping the laptop frame visible. Kept the device on the right when the image adapts to mobile.
-4. Strengthened the pale overlay behind the hero copy for readability over mountain detail.
-5. Applied the same restrained surfaces to shared workspace cards, navigation, BookLoQ and the AI composer. Financial records remain opaque.
-6. Follow-up consistency pass unified the primary-action gradient across account entry, workspace and AI controls; added frosted secondary actions; corrected BookLoQ navigation contrast and selection styling. Resolved an older input/control selector overriding action height. The opportunity heading action was rechecked at a 44px minimum height and 12px corners, with no horizontal document overflow at 960px.
+- Desktop: 1440 x 1000 CSS pixels, approximately 1x capture density. output/hero-dashboard-desktop-local.jpg.
+- Complete selected hero and working dashboard: 1425 x 2074 CSS-pixel region at desktop. output/hero-dashboard-full-local.jpg.
+- Tablet: 768 x 1024 CSS pixels, approximately 1x. output/hero-dashboard-tablet-local.jpg.
+- Phone: 390 x 844 CSS pixels, approximately 1x. output/hero-dashboard-mobile-local.jpg.
+- Focused expanded metric on phone: output/hero-metric-mobile-corrected.jpg.
+- Dashboard generation reference: output/hero-dashboard-reference.jpg, captured from the actual HomeDashboardPreview with fictional sample records only.
 
-Intentional differences from the supplied artwork: preserved existing brand identities, truthful demo/signup actions, actual product modules, visible social links and provider availability labels. No free-trial or universal integration-readiness claim was introduced. The lower page retains working finance proof, provider details, pricing, privacy and help.
+Evidence files are in the parent workspace's output directory. Comparison uses composition and readable hierarchy, not pixel registration: the supplied raster includes an unrelated watch storefront and social overlay. The implementation screenshots are normalized by recorded CSS viewport and capture density.
 
-## Interaction Verification
+## Visual comparison and corrections
 
-- Central shop selection changes homepage sample sales from $24,594 to $11,584 and updates the comparison and evidence link.
-- The missing-journal-line control changes BookLoQ's result from four arithmetic checks passed to a statement difference requiring review.
-- Create Workspace opens the existing single-column signup dialog with required marks and unchecked legal acceptance. Local account submission is deliberately unavailable in the fixture.
-- Provider links reach the directory. QuickBooks visibly retains its sandbox-only explanation and production limitations.
-- AI Settings opens with workspace data, memory and saved-chat controls. No agreement or data-sharing setting was changed during QA.
-- Existing automated checks cover homepage routes, provider messaging, form semantics, accessible charts and financial display behavior.
-- No JavaScript console errors were reported in the checked opportunity fixture.
+- Typography: Geist is retained and browser font status was loaded. The business headline leads, followed by one concise value statement. The exact source principle remains above it in smaller blue type, with its existing word motion. Desktop and mobile wrapping were inspected.
+- Spacing/layout: asymmetric two-column hero on desktop, then the unchanged full-width interactive dashboard. Below 800px, copy, actions, illustration and working dashboard stack in that order. No horizontal document overflow was reported at the three target widths. Reserved image dimensions prevent an unreserved image slot.
+- Colors: existing public tokens provide the device palette. The actual captured OS theme was dark. Blue actions, readable off-white text and dark neutral surfaces remain consistent. Declared light/dark contrast pairs and device changes are covered by focused tests. A live OS-light screenshot was not captured.
+- Imagery: Runway task de64b6e1-f418-4464-8365-bcc575e00341 produced a 2560 x 1712 dashboard illustration from the real fictional-data screenshot. It was inspected standalone and in the page. The generated screen preserves the reference's four metrics, sales chart and goal rings. The page explicitly labels it as a sample dashboard illustration. The actual interactive dashboard below remains the source of inspectable sample values.
+- Image delivery: four local WebP sizes (640, 960, 1440 and 1920 pixels wide), 36,542 to 196,322 bytes. The page uses responsive sources, reserved dimensions, eager/high-priority hero delivery and no third-party runtime image request. The rejected still-life assets were removed from the public source.
+- Copy and actions: Build your dashboard is the sole filled hero action. Open the demo remains a quieter text link. No promotional badge, unrelated prop, new font, dependency or autoplay video was introduced.
 
-This is a visual and interaction regression review for the theme change, not a new audit of every production integration or a WCAG certification. No unresolved P0, P1 or P2 visual issue was found in the checked scope.
+Iteration history:
 
-## Final Result
+1. The first generated still life was rejected by the user as unrelated to the business. Replaced it with a cinematic display grounded in the real product screenshot.
+2. Removed obsolete mobile heading/padding overrides and changed the frame to preserve the complete landscape dashboard image without cropping its UI.
+3. Removed public theme controls and separated device appearance from saved workspace preferences, including public detail portals and cookie notice rendering.
+4. Browser inspection found a pale public metric panel with low-contrast dark-theme copy. Added a public-boundary-only paint owner for panels, headings, chart labels, source disclosures and controls. Kept private styles/preferences unchanged.
+5. Removed the outer panel's fractional horizontal scrollbar while preserving nested chart/table scrolling. Recaptured the phone panel and confirmed readable dark content.
 
-passed
+No unresolved P0, P1 or P2 findings remain in this scoped hero/appearance review. An independent source review found no application regression. This is not a whole-product security or payment certification.
 
-## BookLoQ and Subscription Follow-up, September 14, 2026
+## Interaction and technical checks
 
-Reference: `ChatGPT Image Sep 14, 2026, 11_22_22 AM.png`, 1536 x 1024. Applied its pale silver-blue materials, readable navy typography, four primary KPI cards, restrained lines and generous chart surfaces. Preserved actual product identities, financial terminology and explicit sample/source-status labels. No gaming aesthetic or new decorative animation was introduced.
+- Public navigation has no manual theme selector on desktop or in the opened phone menu.
+- Homepage DOM reports public appearance=system and theme=dark while the actual device preference is dark. Store tests cover live OS changes, saved internal overrides, no public storage writes, remount cleanup and deterministic server rendering.
+- Internal Dark, Light and System settings remain present; their existing persistence/recovery tests pass.
+- Hero signup opens the existing account dialog and closes normally. No account was created. Localhost account verification reported its existing unavailable verification service; a successful account submission was not claimed.
+- Open the demo navigates to the functioning /demo page and browser Back returns to the homepage.
+- The public Before connecting and Show more detail controls have been removed. The preview opens with receipt-backed fictional sample records. Keyboard activation opens Gross Margin, displays its source context and closes with Escape. The close animation completes with the dialog removed. The public portal uses the system-theme boundary.
+- Existing spring endpoint/interruption tests and reduced-motion safeguards remain. Reduced motion was source/test verified, not toggled in the user's OS.
+- Fresh preview tab reported no error or warning console entries. An older development tab retained a transient hot-reload warning from deleting the former public control; the clean load did not reproduce it.
+- Final TypeScript check, production build and artifact validation passed. All 69 focused homepage, appearance, navigation, discovery, customization, sample/empty dashboard, trend and surface-motion tests passed. git diff --check passed.
+- The pre-existing build warning about client chunks larger than 500 kB remains. No end-user performance benchmark is claimed.
 
-The reference and final BookLoQ overview were inspected at the same normalized 960 x 640 size, using a 1536 x 1024 iframe for the application. The second BookLoQ navigation remains because this is an accounting module inside the existing application; it collapses and becomes a section selector on mobile. Missing bank balances remain unavailable instead of copying the reference's invented totals.
+## Publication handoff
 
-Phone QA at 390 x 844 verified the BookLoQ section selector, More Financial Details disclosure, cash-period buttons, chart inspection/table disclosure, and onboarding field errors. Found and fixed the weekly cash-plan table escaping the viewport: the document returned to 375px content width inside the 390px viewport, while wide accounting columns scroll within the labelled region. Raised weekly table copy sizes and removed negative-zero currency display. The homepage proof labels remain 14px with a pale backing at mobile sizes.
+Publish only after the current release checks below are complete, from the reviewed, clean committed source and its matching artifact. Read back the saved/deployed version and GitHub tree afterward. Authentication, financial calculations, integrations and database migrations were not changed.
 
-The real billing gate was tested in a fictional local harness. The visible workspace updated from Starter without BookLoQ to Starter plus BookLoQ, then Pro without BookLoQ. Past-due access was replaced by billing recovery; an inactive employee saw owner guidance with no personal checkout. This confirms the client state transition, not a production card charge.
+final result: passed
 
-No unresolved P0, P1 or P2 visual issue was found in these checked surfaces. This does not claim every production workspace or provider was inspected. Existing authenticated live verification still depends on an available signed-in browser session.
+
+## Vanteloq Advisory Hero, October 16, 2026
+
+Reference: `C:\Users\User\.codex\codex-remote-attachments\01a08cfa-5e60-7461-a1fc-bc48876cea19\3F4A91D6-6A6D-4009-B399-0F3BE54D4D5A\1-Photo-1.jpg`. The reference was used for hierarchy, restraint and the single focal visual. Its third-party branding, claims and people were not reproduced.
+
+The Advisory hero now follows one reading path: Vanteloq Advisory, the two-part value statement, one concise explanation, one primary action, and one original connected-systems visual. The supporting method link and Edmonton availability note follow the visual so they remain available without competing with the primary decision.
+
+### Visual and Responsive Verification
+
+- Desktop capture: `qa/advisory-hero/desktop-final.png`, 1440 x 1200 CSS pixels.
+- Mobile capture: `qa/advisory-hero/mobile-390-final.png`, 390 x 844 CSS pixels.
+- The mobile document measured 390px wide with a 390px scroll width. The hero measured 358px wide, so no horizontal overflow was present.
+- The mobile media began at 558.3px and exposed 268.5px in the first viewport. The 42px headline, 16px body copy and 54px primary action were preserved.
+- The desktop media began at 589.8px and exposed 585px in the first viewport.
+- The desktop cinematic film is self-hosted, 1280 x 720, 15.04 seconds, H.264 High Profile, BT.709, silent and fast-start enabled. Compression reduced it from 11.85 MB to 4.86 MB without a visible loss in the checked frames.
+- Mobile browsers receive a separate centre-cropped 640 x 480 rendition at 1.80 MB. It matches the displayed 4:3 frame and avoids downloading or decoding the larger desktop film.
+
+### Motion, Accessibility and Failure States
+
+- Normal-motion checks confirmed that the film mounted only after load, entered the viewport and became idle, then played muted and inline.
+- Reduced-motion emulation at 390 x 844 mounted no video source and retained the responsive poster.
+- Save Data, slow connections, hidden tabs, off-screen playback, autoplay rejection and media failure keep or restore the poster.
+- The decorative poster uses an empty alternative text value, and the video is hidden from assistive technology and removed from the tab order.
+- Browser lifecycle helpers have behavioral coverage for load state, visibility, connection gates, pause behavior and rejected playback.
+
+No unresolved P0, P1 or P2 issue remains in the checked hero scope. The visual intentionally adapts the reference to Vanteloq's real identity and content instead of recreating the sample design.
+
+Final result: passed
+
+## Current release additions
+
+- Hero: short 1.1-second entrance, fine-mouse depth limited to 1 and 1.4 degrees, touch press feedback and a visible Explore dashboard link. No idle animation loop or changing fictional business totals. Reduced motion suppresses all new movement.
+- Interaction: mouse and keyboard enter the native #dashboard-preview region; focus and browser history are retained. Measured destination top was about 92 CSS pixels beneath the sticky navigation. Customize opened and closed with Escape. No account or layout was saved.
+- Current hero evidence: output/hero-motion-desktop.jpg (1440 x 1000), output/hero-motion-hover.jpg, output/hero-motion-dashboard-target.jpg, output/hero-motion-mobile.jpg (390 x 844), and output/hero-motion-tablet.jpg (768 x 1024). All inspected. No horizontal document overflow was reported at these widths.
+- Offscreen state clears pointer work and suppresses entrance animation. Independent review identified a stop-selector specificity issue; corrected and browser-verified as animation-name: none outside view.
+- Workspace: scoped landing/navigation patch reconciled against version 391. Canonical /workspace, safe permanent legacy redirect, sitemap and public analytics are aligned. Existing /datstudio allowlist, APIs, private authentication, database migrations and financial calculations are unchanged.
+- Corrected Workspace primary-button colour specificity. Six approved logos retain original dimensions, use WebP and load lazily; 556,364 bytes total versus 4,218,570 PNG bytes. Public copy describes the product and its preview boundary. Detailed planned integrations are disclosed on request.
+- Current checks: 30 focused source/component tests, nine built-worker/discovery tests, full TypeScript checking, production build and Sites artifact validation passed. Initial route-test run overlapped the asset conversion and failed on the removed PNG path; rerun after conversion passed all six route tests. No unresolved code failure remains.
+- Independent review also found an obsolete expansion-gated CSS rule suppressing customized panels. Removed the rule and added a regression assertion. Corrected shared navigation coverage at 801 to 1040 CSS pixels, retained semantic dark/light colours, and aligned its focus-reset breakpoint at 1041 pixels. All 24 affected checks and full TypeScript verification passed again.
+- Final combined browser verification passed on desktop and mobile. The canonical `/workspace` route has no horizontal overflow, all six WebP app marks load at their natural dimensions, the responsive navigation exposes the correct Workspace sign-in action, and the external handoff opens the separate Workspace application without forwarding the commercial session. Advisory retained its existing hierarchy, its inquiry form reached the ready state, its social icons remained keyboard reachable, and its Workspace link resolves to `/workspace`.
+- Final verification passed: 29 focused Advisory, navigation and Workspace tests; five production-route tests; full TypeScript checking; production build; Sites artifact validation; and `git diff --check`.
+
+final result: passed

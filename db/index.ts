@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema.ts";
 
 export type VanteloqRuntimeEnv = {
+  DATA_STUDIO_ENABLED?: string;
   GOOGLE_FILES_ENABLED?: string;
   GOOGLE_FILES_CLIENT_ID?: string;
   GOOGLE_FILES_CLIENT_SECRET?: string;

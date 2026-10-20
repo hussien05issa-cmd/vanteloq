@@ -544,7 +544,7 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       });
     });
 
-    await t.test("a provisional bill below its PO value leaves only the unpaid PO amount confirmed", async () => {
+    await t.test("a provisional bill below its PO reserves confirmed and unreviewed exposure once", async () => {
       await clearLiveCommitments(database, identity.organizationId);
       await seedPurchaseOrder(database, {
         organizationId: identity.organizationId,
@@ -566,12 +566,12 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       });
 
       assert.deepEqual(forecastTotals(await getCashFlow(worker, environment, email)), {
-        confirmedCents: -80_000,
-        expectedCents: 0,
+        confirmedCents: -40_000,
+        expectedCents: -40_000,
       });
     });
 
-    await t.test("a provisional bill above its PO value retains the uncovered variance as expected", async () => {
+    await t.test("a provisional bill above its PO reserves the complete unpaid bill as unreviewed", async () => {
       await clearLiveCommitments(database, identity.organizationId);
       await seedPurchaseOrder(database, {
         organizationId: identity.organizationId,
@@ -593,8 +593,8 @@ test("BookLoQ cash-flow route deduplicates commitments and only counts trusted c
       });
 
       assert.deepEqual(forecastTotals(await getCashFlow(worker, environment, email)), {
-        confirmedCents: -80_000,
-        expectedCents: -40_000,
+        confirmedCents: 0,
+        expectedCents: -120_000,
       });
     });
 
@@ -959,7 +959,7 @@ test("linked files require consent, keep snapshots private and reject cross-work
     };
     const post=async(body:unknown,email=owner.email)=>dispatch(worker,env,"/api/v1/linked-files",{method:"POST",email,body});
     const noConsent=await post({action:"authorize",provider:"google-files"}); assert.equal(noConsent.status,400); assert.equal(externalCalls,0);
-    const auth=await post({action:"authorize",provider:"google-files",accepted:true,noticeVersion:"linked-files-2026-09-26"}); assert.equal(auth.status,200,await auth.clone().text());
+    const auth=await post({action:"authorize",provider:"google-files",accepted:true,noticeVersion:"linked-files-2026-10-04"}); assert.equal(auth.status,200,await auth.clone().text());
     const authorization=new URL((await auth.json()).authorizationUrl); assert.equal(authorization.searchParams.get("code_challenge_method"),"S256");
     const callbackUrl=origin+"/api/v1/linked-files/google-files/callback?state="+authorization.searchParams.get("state")+"&code=fictional-code";
     const callback=await worker.fetch(new Request(callbackUrl,{headers:{cookie:auth.headers.get("set-cookie")!.split(";")[0]}}),env,executionContext); assert.equal(callback.status,303,await callback.clone().text());

@@ -168,7 +168,8 @@ export const FREE_PLAN = Object.freeze({
   key: "free" as const,
   displayName: "Free",
   description: "Try your real sales records in a workspace that stays free.",
-  policyVersion: "free-origin-1",
+  policyVersion: "free-origin-2",
+  integrationProviders: 2,
   limits: Object.freeze({ activeLocations: 1, users: 1,
     ai: Object.freeze({ capability: "basic" as const, requestsPerMonth: 10, meteringStatus: "monthly" as const }),
   }),
@@ -177,7 +178,7 @@ export const FREE_PLAN = Object.freeze({
     "dashboard.core", "business.profile", "business.settings", "analytics.sales.basic",
     "products.basic", "products.margin", "ai.basic", "reporting.basic", "multi_location.basic",
   ] as const satisfies readonly FeatureKey[]),
-  highlights: Object.freeze(["1 owner and 1 location", "100 daily sales records per month via CSV or manual entry",
+  highlights: Object.freeze(["1 owner and 1 location", "2 available integrations of your choice", "100 daily sales records per month via CSV or manual entry",
     "10 Vanteloq AI replies per month", "Core dashboard, sales summaries and reports", "No card required. No expiry."]),
 });
 

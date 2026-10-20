@@ -1,0 +1,58 @@
+/* Task state presentation and completion targets share the loaded row geometry. */
+.operating-shell .tasks-page .task-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.operating-shell .tasks-page .task-stats > div { min-width: 0; }
+.tasks-page .task-member-field > span { display: flex; align-items: center; gap: 8px; }
+.tasks-page .task-member-field > small { display: block; }
+.tasks-page .task-count-placeholder {
+  display: block;
+  width: 48px;
+  height: 27px;
+  border-radius: 5px;
+  background: var(--ws-raised, #e4eaf2);
+}
+.tasks-page .task-count-unavailable { font-size: 14px; overflow-wrap: anywhere; }
+
+.tasks-page .task-item { grid-template-columns: 44px minmax(0, 1fr) auto; }
+.tasks-page .check-task {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.tasks-page .check-task::before {
+  content: "";
+  width: 24px;
+  height: 24px;
+  box-sizing: border-box;
+  border: 1.5px solid var(--ws-control, #aebdce);
+  border-radius: 50%;
+  background: var(--ws-panel, #fff);
+}
+.tasks-page .is-done .check-task::before { background: #218763; border-color: #218763; }
+.tasks-page .is-done .check-task::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin: 0;
+  transform: translate(-50%, -50%);
+}
+.tasks-page .check-task:focus-visible { outline: 3px solid var(--ws-focus, #235dc2); outline-offset: 2px; }
+.tasks-page .check-task:disabled { cursor: not-allowed; }
+
+@media (max-width: 760px) {
+  .operating-shell .tasks-page .task-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tasks-page .task-item { grid-template-columns: 44px minmax(0, 1fr); }
+}
+@media (forced-colors: active) {
+  .tasks-page .check-task::before { border-color: ButtonText; }
+  .tasks-page .is-done .check-task::before { background: Highlight; border-color: Highlight; }
+  .tasks-page .is-done .check-task::after { background: HighlightText; }
+}

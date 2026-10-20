@@ -8,6 +8,7 @@ import {
 } from "../../../../domain/navigation-preferences";
 import { businessClock } from "../../../../domain/intraday-sales";
 import { normalizeDashboardPreferences } from "../../../../domain/dashboard-preferences";
+import { dashboardReviewMatches } from "../../../../domain/advisor-dashboard-actions";
 import { workspaceDashboardJson } from "../../../../domain/dashboard-personalization";
 import { normalizeCollectionsPreferences } from "../../../../domain/collections-dashboard";
 import {
@@ -76,6 +77,10 @@ export async function POST(request: Request) {
       .from(accountPreferences)
       .where(eq(accountPreferences.userId, context.userId))
       .limit(1);
+    const reviewed = Object.prototype.hasOwnProperty.call(input, "expectedDashboardPreferences");
+    if (reviewed && !dashboardReviewMatches({ current: workspaceDashboardJson(existing?.dashboardPreferencesJson, context.organizationId), expected: input.expectedDashboardPreferences, scope: input.expectedPreferenceScope, userId: context.userId, workspaceId: context.organizationId })) {
+      throw new ApiError(409, "DASHBOARD_REVIEW_CHANGED", "Your dashboard or workspace changed. Review the proposed layout again before saving.");
+    }
     const hiddenNavigation = normalizeHiddenNavigation(
       Array.isArray(input.hiddenNavigation)
         ? input.hiddenNavigation.filter((item): item is string => typeof item === "string")
@@ -115,7 +120,7 @@ export async function POST(request: Request) {
     }
     if(Object.prototype.hasOwnProperty.call(input,"collectionsPreferences")) dashboardWrite=sql`json_set(${dashboardWrite}, '$.dashboard.collections', json(${JSON.stringify(dashboardPreferences.collections)}))`;
     const now = new Date();
-    await getDb()
+    const saved = await getDb()
       .insert(accountPreferences)
       .values({
         userId: context.userId,
@@ -130,12 +135,14 @@ export async function POST(request: Request) {
       .onConflictDoUpdate({
         target: accountPreferences.userId,
         set: {
-          hiddenNavigationJson: JSON.stringify(hiddenNavigation),
+          ...(Object.prototype.hasOwnProperty.call(input,"hiddenNavigation") ? { hiddenNavigationJson: JSON.stringify(hiddenNavigation) } : {}),
           dashboardPreferencesJson: dashboardWrite,
-          preferredLocationId,
+          ...(Object.prototype.hasOwnProperty.call(input,"preferredLocationId") ? { preferredLocationId } : {}),
           updatedAt: now,
         },
-      });
+        ...(reviewed ? { setWhere: sql`${accountPreferences.dashboardPreferencesJson} IS ${existing?.dashboardPreferencesJson ?? null}` } : {}),
+      }).returning({ userId: accountPreferences.userId });
+    if (!saved.length) throw new ApiError(409, "DASHBOARD_REVIEW_CHANGED", "Your dashboard changed while saving. Review the proposed layout again.");
     return jsonResponse(await preferencePayload(context));
   });
 }

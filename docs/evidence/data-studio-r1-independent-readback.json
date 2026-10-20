@@ -1,0 +1,26 @@
+{
+  "reader": "openpyxl independent readback",
+  "fictional": true,
+  "file": "data-studio-executive-review-fictional.xlsx",
+  "sheets": [
+    "Overview",
+    "Sales",
+    "Margin",
+    "Inventory",
+    "Cash",
+    "Data Quality",
+    "Sources"
+  ],
+  "salesRows": 2000,
+  "netSales": "246900.00",
+  "exactNetSalesCents": "24690000",
+  "grossProfit": "146900.00",
+  "leadingZeroIds": "text",
+  "calendarDates": "ISO text",
+  "formulaCells": 0,
+  "externalLinks": 0,
+  "macros": 0,
+  "frozenHeader": "A2",
+  "filter": "A1:I2001",
+  "desktopExcelOrLibreOfficeRendering": false
+}

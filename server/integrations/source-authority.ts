@@ -1,4 +1,5 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { verifiedPosPublicationSql } from "./pos-publication";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getD1, getDb } from "../../db";
 import {
   integrationConnections,
@@ -38,6 +39,7 @@ export async function commerceSourceAuthority(input: {
       lastSuccessfulSyncAt: integrationConnections.lastSuccessfulSyncAt,
       connectionStatus: integrationConnections.status,
       dataPromotionStatus: integrationConnections.dataPromotionStatus,
+      publicationVerified: sql<boolean>`(${sql.raw(verifiedPosPublicationSql("integration_connections"))})`.mapWith(Boolean),
       syncLeaseOwner: integrationConnections.syncLeaseOwner,
       syncLeaseExpiresAt: integrationConnections.syncLeaseExpiresAt,
     }).from(integrationLocationMappings).innerJoin(integrationConnections, and(
@@ -100,7 +102,7 @@ export async function commerceSourceAuthority(input: {
             ? "unavailable" as const
             : leaseActive
               ? "syncing" as const
-              : mapping.dataPromotionStatus !== "approved"
+              : (mapping.dataPromotionStatus !== "approved" || !mapping.publicationVerified)
                 ? "staging" as const
                 : !candidateHasFacts
                   ? "needs_data" as const

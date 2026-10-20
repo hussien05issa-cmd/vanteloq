@@ -1,3 +1,5 @@
+import { exactSum } from "./executive-metrics";
+
 export type CashFlowItem = {
   id: string;
   label: string;
@@ -29,9 +31,8 @@ function endDate(asOf: string, days: number) {
 }
 
 function closingCash(openingCashCents: number, items: readonly CashFlowItem[], through: string) {
-  return openingCashCents + items
-    .filter((item) => item.dueDate <= through)
-    .reduce((sum, item) => sum + (item.direction === "in" ? item.amountCents : -item.amountCents), 0);
+  return exactSum([openingCashCents, ...items.filter(item => item.dueDate <= through)
+    .map(item => item.direction === "in" ? item.amountCents : -item.amountCents)]);
 }
 
 export function calculateCashFlowIntelligence(input: {
@@ -50,28 +51,28 @@ export function calculateCashFlowIntelligence(input: {
   const liquidity30Cents = closingCash(input.openingCashCents, eligible, endDate(input.asOf, 30));
   const liquidity60Cents = closingCash(input.openingCashCents, eligible, endDate(input.asOf, 60));
   const confirmed60 = eligible.filter((item) => item.direction === "out" && item.certainty === "confirmed" && item.dueDate <= endDate(input.asOf, 60));
-  const purchasingCapacityCents = Math.max(0, input.openingCashCents - input.safetyThresholdCents - confirmed60.reduce((sum, item) => sum + item.amountCents, 0));
+  const purchasingCapacityCents = Math.max(0, exactSum([input.openingCashCents, -input.safetyThresholdCents, ...confirmed60.map(item => -item.amountCents)]));
   let running = input.openingCashCents;
   let minimumCashCents = running;
   let minimumCashDate = input.asOf;
   // Daily balances must not change with the database's row order.
-  const dailyNet = new Map<string, number>();
+  const dailyNet = new Map<string, number[]>();
   for (const item of eligible.filter((item) => item.dueDate <= endDate(input.asOf, 60))) {
-    dailyNet.set(item.dueDate, (dailyNet.get(item.dueDate) ?? 0) + (item.direction === "in" ? item.amountCents : -item.amountCents));
+    dailyNet.set(item.dueDate, [...(dailyNet.get(item.dueDate) ?? []), item.direction === "in" ? item.amountCents : -item.amountCents]);
   }
   for (const [date, net] of [...dailyNet].sort(([a], [b]) => a.localeCompare(b))) {
-    running += net;
+    running = exactSum([running, ...net]);
     if (running < minimumCashCents) { minimumCashCents = running; minimumCashDate = date; }
   }
   const risk = minimumCashCents < 0 ? "high" : minimumCashCents < input.safetyThresholdCents ? "moderate" : "low";
   const supplier = confirmed60.filter((item) => item.category === "supplier").sort((a, b) => b.amountCents - a.amountCents)[0];
   const laterObligations = supplier ? confirmed60.filter((item) => item.id !== supplier.id) : [];
-  const cashAfterPayingToday = supplier ? input.openingCashCents - supplier.amountCents : input.openingCashCents;
+  const cashAfterPayingToday = supplier ? exactSum([input.openingCashCents, -supplier.amountCents]) : input.openingCashCents;
   let warning: string | null = null;
   if (supplier) {
     let scenarioCash = cashAfterPayingToday;
     for (const item of [...laterObligations].sort((a, b) => a.dueDate.localeCompare(b.dueDate))) {
-      scenarioCash -= item.amountCents;
+      scenarioCash = exactSum([scenarioCash, -item.amountCents]);
       if (scenarioCash < input.safetyThresholdCents) {
         warning = `Paying ${supplier.label} in full today would move projected cash below the safety threshold by ${item.dueDate}, before ${item.label}.`;
         break;

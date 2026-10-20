@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { temporalPositions, temporalLabelIndices, observationSegments, signedBarGeometry, axisNumber } from "../domain/chart-geometry";
+import { temporalPositions, temporalLabelIndices, observationSegments, signedBarGeometry, axisNumber, smoothChartPath, type ChartPoint } from "../domain/chart-geometry";
 
 const day = 86_400_000;
 const stamp = (date: string) => Date.parse(`${date}T00:00:00Z`);
@@ -69,4 +69,83 @@ test("close fractional rank ticks remain distinguishable", () => {
   const labels = [1.01, 1.0125, 1.015, 1.0175, 1.02].map(value => axisNumber(value, .0025));
   assert.equal(new Set(labels).size, 5);
   assert.equal(axisNumber(2.5, 2.5), "2.5");
+});
+
+const pathCommands = (path: string) => [...path.matchAll(/([MLC])([^MLC]+)/g)].map(match => ({
+  command: match[1],
+  values: match[2].trim().split(/[\s,]+/).map(Number),
+}));
+
+const cubicValue = (start: number, firstControl: number, secondControl: number, end: number, t: number) =>
+  (1 - t) ** 3 * start + 3 * (1 - t) ** 2 * t * firstControl + 3 * (1 - t) * t ** 2 * secondControl + t ** 3 * end;
+
+test("smooth paths pass through every exact recorded coordinate without rounding endpoints", () => {
+  const points = [{ x: 0.125, y: 3.141592653589793 }, { x: 12.875, y: -1.12345678901234 }, { x: 98.625, y: 6.98765432109876 }];
+  const commands = pathCommands(smoothChartPath(points));
+  assert.deepEqual(commands[0], { command: "M", values: [points[0].x, points[0].y] });
+  assert.equal(commands.length, points.length);
+  for (let index = 1; index < commands.length; index++) {
+    assert.equal(commands[index].command, "C");
+    assert.deepEqual(commands[index].values.slice(-2), [points[index].x, points[index].y]);
+    assert.ok(commands[index].values.every(Number.isFinite));
+  }
+});
+
+test("smooth curves stay between adjacent observations across turns, flat periods and uneven spacing", () => {
+  const series: ChartPoint[][] = [
+    [{ x: 0, y: 8 }, { x: 30, y: 2 }, { x: 60, y: 6 }, { x: 90, y: -4 }, { x: 120, y: 3 }],
+    [{ x: 0, y: 8 }, { x: 1, y: 2 }, { x: 35, y: 2 }, { x: 36, y: 2 }, { x: 100, y: -4 }],
+    [{ x: 0, y: -5 }, { x: .01, y: 2 }, { x: 10, y: 2.1 }, { x: 60, y: 12 }],
+    [{ x: 0, y: 3 }, { x: 1, y: 3 }, { x: 50, y: 3 }],
+  ];
+  for (const points of series) {
+    const commands = pathCommands(smoothChartPath(points));
+    for (let index = 1; index < commands.length; index++) {
+      const first = points[index - 1], next = points[index], controls = commands[index].values;
+      let previousY = first.y;
+      for (let sample = 0; sample <= 100; sample++) {
+        const t = sample / 100;
+        const x = cubicValue(first.x, controls[0], controls[2], next.x, t);
+        const y = cubicValue(first.y, controls[1], controls[3], next.y, t);
+        assert.ok(x >= first.x - 1e-10 && x <= next.x + 1e-10);
+        assert.ok(Math.abs(x - (first.x + (next.x - first.x) * t)) < 1e-10, "time spacing stays linear");
+        assert.ok(y >= Math.min(first.y, next.y) - 1e-10 && y <= Math.max(first.y, next.y) + 1e-10, "curve adds no overshoot");
+        if (next.y >= first.y) assert.ok(y >= previousY - 1e-10);
+        else assert.ok(y <= previousY + 1e-10);
+        previousY = y;
+      }
+    }
+  }
+});
+
+test("uneven intervals use a continuous weighted slope and turns have horizontal tangents", () => {
+  const commands = pathCommands(smoothChartPath([{ x: 0, y: 0 }, { x: 1, y: 2 }, { x: 10, y: 3 }, { x: 12, y: 2 }]));
+  const arrivingSlope = 3 * (2 - commands[1].values[3]);
+  const departingSlope = 3 * (commands[2].values[1] - 2) / 9;
+  assert.ok(Math.abs(arrivingSlope - 60 / 217) < 1e-12);
+  assert.ok(Math.abs(arrivingSlope - departingSlope) < 1e-12);
+  assert.equal(commands[2].values[3], 3);
+  assert.equal(commands[3].values[1], 3);
+  const clippedEndpoint = pathCommands(smoothChartPath([{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: -100 }]));
+  assert.equal(clippedEndpoint[1].values[1], 1, "steep reversal limits the endpoint tangent to three times its secant");
+});
+
+test("empty, isolated and two-point paths remain simple and missing coordinates break connections", () => {
+  assert.equal(smoothChartPath([]), "");
+  assert.equal(smoothChartPath([{ x: 1.23456, y: -9.87654 }]), "M1.23456,-9.87654");
+  assert.equal(smoothChartPath([{ x: 0, y: 1 }, { x: 2, y: 3 }]), "M0,1 L2,3");
+  assert.equal(smoothChartPath([{ x: 0, y: 1 }, { x: NaN, y: 2 }, { x: 4, y: 3 }, { x: 5, y: 4 }]), "M0,1 M4,3 L5,4");
+  assert.equal(smoothChartPath([{ x: 0, y: 1 }, { x: 2, y: Infinity }, { x: 4, y: 3 }]), "M0,1 M4,3");
+});
+
+test("duplicate or descending time coordinates fall back to straight paths without division errors", () => {
+  assert.equal(smoothChartPath([{ x: 0, y: 1 }, { x: 0, y: 3 }, { x: 2, y: 4 }]), "M0,1 L0,3 L2,4");
+  assert.equal(smoothChartPath([{ x: 0, y: 1 }, { x: 2, y: 3 }, { x: 1, y: 4 }]), "M0,1 L2,3 L1,4");
+});
+
+test("smooth geometry accepts frozen input and leaves source coordinates intact", () => {
+  const points = Object.freeze([Object.freeze({ x: 0, y: 10 }), Object.freeze({ x: 5, y: -7 }), Object.freeze({ x: 12, y: 1 })]);
+  const before = JSON.stringify(points);
+  assert.ok(smoothChartPath(points).includes("C"));
+  assert.equal(JSON.stringify(points), before);
 });

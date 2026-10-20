@@ -11,6 +11,8 @@ export type TrustedIdentity = {
   subject: string | null;
   provider: "supabase" | "sites";
   emailVerified: boolean;
+  // Explicit email confirmation is separate from generic email-or-phone confirmation.
+  emailConfirmed?: boolean;
   assuranceLevel: "aal1" | "aal2" | null;
   sessionId: string | null;
   mfaVerifiedAt?: number | null;
@@ -73,13 +75,14 @@ export async function optionalIdentity(request: Request): Promise<TrustedIdentit
       const email = typeof user.email === "string" ? user.email.trim().toLowerCase() : "";
       const subject = typeof user.id === "string" ? user.id : "";
       const emailVerified = typeof user.email_confirmed_at === "string" || typeof user.confirmed_at === "string";
+      const emailConfirmed = typeof user.email_confirmed_at === "string" && user.email_confirmed_at.trim().length > 0;
       if (!subject || !EMAIL_PATTERN.test(email) || !emailVerified) return null;
       const metadataName = user.user_metadata?.full_name;
       const displayName = typeof metadataName === "string" && metadataName.trim().length <= 120
         ? metadataName.trim()
         : email;
       const session = verifiedJwtSession(token);
-      return { email, displayName, subject, provider: "supabase", emailVerified, ...session };
+      return { email, displayName, subject, provider: "supabase", emailVerified, emailConfirmed, ...session };
     } catch {
       return null;
     }

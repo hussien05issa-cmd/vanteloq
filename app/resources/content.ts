@@ -1,3 +1,5 @@
+import { SECTOR_GUIDES } from "./sector-guides";
+import { ADVISORY_RESOURCE_ARTICLES } from "./advisory-articles";
 import type { ResourceCategory } from "./metadata";
 export { RESOURCE_CATEGORIES, getCategory, getReadingTime } from "./metadata";
 export type { ResourceCategory } from "./metadata";
@@ -46,6 +48,7 @@ export type ResourceArticle = {
   updated: string;
   hero?: {
     src: string;
+    webpSrc?: string;
     alt: string;
     width: number;
     height: number;
@@ -59,7 +62,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "how-to-track-inventory-small-business",
     title: "How to Track Inventory for a Small Business",
-    seoTitle: "How to Track Inventory for a Small Business: A Practical System",
+    seoTitle: "How to Track Inventory for a Small Business | Vanteloq",
     description: "Learn a practical small-business inventory tracking system covering SKU records, stock movements, cycle counts, reorder inputs and common accuracy problems.",
     dek: "A reliable inventory system is a repeatable record of what came in, what went out, what remains and why the quantity changed.",
     quickAnswer: "Start with one record per SKU and location, record every receipt, sale, return, transfer and adjustment, then verify the records with regular physical counts. Track quantity on hand, available quantity, unit cost, reorder inputs and the timestamp of the last verified count. The system matters more than the software: every stock change needs a source and an owner.",
@@ -311,7 +314,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "what-should-small-business-dashboard-show",
     title: "What Should a Small Business Dashboard Show?",
-    seoTitle: "What Should a Small Business Dashboard Show? Practical Guide",
+    seoTitle: "Small Business Dashboard KPIs: What to Track | Vanteloq",
     description: "Learn which sales, margin, cash, inventory and operations measures belong on a useful small-business dashboard, plus the context each metric needs.",
     dek: "A useful dashboard is not a wall of charts. It is a short, consistent view of current performance, important changes, data limits and the decisions that need attention.",
     quickAnswer: "Start with a small executive snapshot: net sales, transactions, average basket, gross profit and gross margin when cost coverage is reliable, current cash with known obligations, inventory value and risk, and open operational exceptions. Every metric should show its period, comparison, source and freshness. Add product, location or channel detail only when it helps explain a change or supports an action.",
@@ -489,7 +492,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "how-to-analyze-business-data-for-growth",
     title: "How to Analyze Business Data for Sustainable Growth",
-    seoTitle: "How to Analyze Business Data for Sustainable Growth",
+    seoTitle: "Business Data Analysis for Growth: A Practical Guide | Vanteloq",
     description: "Learn how to analyze sales, margin, cash, inventory and marketing data, test growth decisions, and scale a small business without losing control.",
     dek: "Sustainable growth comes from a repeatable decision loop: define the question, verify the inputs, explain the change, test one action and review the result against operational limits.",
     quickAnswer: "Begin with one decision, not a collection of charts. Compare a clearly defined metric with an equivalent period, then split the change into its likely drivers. Check whether margin, cash, inventory, staffing and location capacity can support the next action. Run a bounded test with a primary measure, a guardrail and a review date. Keep provider-attributed marketing results separate from verified sales and record what the evidence can and cannot prove.",
@@ -651,7 +654,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "data-analytics-for-small-business",
     title: "Data Analytics for Small Business: A Practical Guide",
-    seoTitle: "Data Analytics for Small Business: A Practical Guide",
+    seoTitle: "Data Analytics for Small Business: A Practical Guide | Vanteloq",
     description: "Learn how to use data analytics in a small business to improve sales, margin, inventory, cash flow and daily decisions with a practical, trusted process.",
     dek: "Small business data analytics turns everyday operating records into clear questions, reliable measures and accountable actions. The goal is not more charts. It is better evidence for the next decision.",
     quickAnswer: "Data analytics for small business begins with a decision that matters, such as what to reorder, where margin changed or whether cash can support a purchase. Identify the source records needed to answer that question, reconcile them, define each metric and compare equivalent periods. Use descriptive analysis to show what happened, diagnostic analysis to investigate why, and carefully tested forecasts to estimate what may happen next. Keep source, freshness, scope and uncertainty visible. Protect personal information, separate platform attribution from verified business outcomes, and assign every material finding to an owner with a review date. A simple weekly routine built on trusted data is more useful than a complex dashboard nobody can explain.",
@@ -661,7 +664,7 @@ const articles: readonly ResourceArticle[] = [
     published: "2026-08-30",
     updated: "2026-08-30",
     hero: {
-      src: "/brand/vanteloq-command-ledger.webp",
+      src: "/brand/glass-2026-10-12/command-ledger.svg",
       alt: "Vanteloq command centre showing sales, margin, cash, inventory, purchasing and accountable business decisions in one operating view.",
       width: 1487,
       height: 1058,
@@ -889,7 +892,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "small-business-bookkeeping-system",
     title: "A Practical Bookkeeping System for a Small Business",
-    seoTitle: "A Practical Bookkeeping System for a Small Business",
+    seoTitle: "Small Business Bookkeeping System: A Practical Guide | Vanteloq",
     description: "Build a reliable small-business bookkeeping system with source documents, bank reconciliation, month-end controls and an accountant-ready review process.",
     dek: "Reliable books come from a disciplined evidence, review, reconciliation and close routine. Software can reduce the work, but it cannot turn an unsupported transaction into an accounting conclusion.",
     quickAnswer: "Keep the original invoice, receipt or statement for every material entry, record who paid or was paid, categorize the transaction under a documented policy, and reconcile bank, card, merchant and POS clearing balances regularly. Close each month only after unexplained differences, duplicate records and missing evidence are resolved or assigned. Preserve corrections through review and reversal instead of silently replacing history, then export an accountant-ready package with the source documents and open questions.",
@@ -1044,7 +1047,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "small-business-cash-flow-management-guide",
     title: "Small-Business Cash Flow: A Practical Control and Forecasting Guide",
-    seoTitle: "Small-Business Cash Flow Management and Forecasting Guide",
+    seoTitle: "Small Business Cash Flow Management & Forecasting | Vanteloq",
     description: "Learn how to build a source-backed cash-flow statement, 13-week forecast, category budget and receipt-review routine without confusing profit with cash.",
     dek: "Cash control is not a single bank balance. It is a repeatable view of opening cash, categorized inflows and outflows, committed obligations, expected receipts, budget pressure and the evidence behind each number.",
     quickAnswer: "Start with a verified opening balance. Record cash inflows and outflows by category, reconcile them to source records, and calculate closing cash as opening cash plus inflows minus outflows. Build a rolling 13-week direct forecast that keeps confirmed obligations separate from expected receipts. Compare actual plus committed spend with the approved category budget, preserve receipts and invoices, and review forecast error every period instead of treating a prediction as a fact.",
@@ -1055,6 +1058,7 @@ const articles: readonly ResourceArticle[] = [
     updated: "2026-08-11",
     hero: {
       src: "/brand/bookloq-cash-control-v1.png",
+      webpSrc: "/brand/delivery-2026-10/bookloq-cash-control-lossless.webp",
       alt: "A BookLoQ finance illustration showing source records moving through categorized cash flow, a forecast band and spend-control review.",
       width: 1774,
       height: 887,
@@ -1170,6 +1174,100 @@ const articles: readonly ResourceArticle[] = [
     related: ["small-business-bookkeeping-system", "how-to-calculate-gross-margin-small-business", "what-should-small-business-dashboard-show"],
   },
   {
+    slug: "business-consulting-vs-business-software",
+    title: "Do You Need Vanteloq Advisory, Workspace or Both?",
+    seoTitle: "Business Advisory vs. Business Software: How to Choose | Vanteloq",
+    description: "Decide whether your business needs clearer priorities, a more dependable operating workspace or both, with practical questions for comparing the full commitment.",
+    dek: "Advisory helps define or change the work. Workspace supports a process that the team understands and needs to repeat.",
+    quickAnswer: "Start with Vanteloq Advisory when the business needs help choosing a priority, diagnosing a process or organizing implementation. Start with Vanteloq Workspace when the recurring task is clear and the team needs a dependable way to connect approved records, analysis, decisions and follow-up work. Use both when the process must change and a shared workspace will support the new operating rhythm. Neither an advisor nor software replaces accountable decision-making inside the business.",
+    searchIntent: "Compare business advisory services with business software and decide whether Advisory, Workspace or a combined engagement fits the problem.",
+    category: "operations",
+    author: "Vanteloq Editorial Team",
+    published: "2026-09-16",
+    updated: "2026-10-13",
+    hero: {
+      src: "/brand/scaling-decision-editorial-hero.webp",
+      alt: "A business decision scene connecting advisory priorities, operating evidence and a dependable workspace for follow-through.",
+      width: 1672,
+      height: 941,
+    },
+    sections: [
+      {
+        id: "define-the-problem",
+        heading: "Name the problem before choosing the solution",
+        paragraphs: [
+          "Replace a broad request such as 'we need better systems' with an observable problem. Perhaps nobody owns overdue quotes, managers calculate gross margin differently, or purchasing decisions happen without checking upcoming bills. These problems may require different responses even when they appear in the same business.",
+          "Write down the task, its owner, the available records and the decision that should follow. If the task is understood but difficult to repeat, software may help. If people disagree about the task or its purpose, resolve that uncertainty first. Sometimes a shared checklist and clearer responsibility are sufficient.",
+        ],
+      },
+      {
+        id: "start-with-advisory",
+        heading: "Start with Advisory when the direction or process is unclear",
+        paragraphs: [
+          "Business advisory support is worth considering when the team needs an outside perspective, structured analysis or help carrying a change through. Examples include choosing between competing priorities, defining useful performance measures, documenting how work should pass between people or organizing an implementation.",
+          "Ask what the engagement will leave behind: a prioritized plan, agreed metric definitions, a documented process or implementation support. Agree who will make decisions, what evidence the advisor needs and how the work will be reviewed. Be cautious about a broad engagement that cannot describe its deliverables or the limits of its scope.",
+        ],
+      },
+      {
+        id: "start-with-workspace",
+        heading: "Start with Workspace when the team understands the recurring work",
+        paragraphs: [
+          "Business software may be the next step when staff understand the process and repeatedly need to bring records together, compare performance or coordinate follow-up work. Check whether an existing system can already do the job before adding another subscription.",
+          "Evaluate the product using one representative task and suitable sample records. Can a manager understand where a number came from? Can someone correct missing information? Can the next responsible person find the work? Business Development Bank of Canada's ERP selection guidance emphasizes business requirements, vendor evaluation and total cost. Those questions are useful for smaller software purchases too; they do not mean every business needs an ERP system.",
+        ],
+      },
+      {
+        id: "use-both",
+        heading: "Use both when a changed process needs a dependable home",
+        paragraphs: [
+          "In a fictional retail example, two managers disagree about whether a stock purchase is affordable. Their spreadsheets use different payment dates, and neither person owns the weekly review. Adding another dashboard would leave that disagreement unresolved.",
+          "The advisory work is to agree which commitments belong in the review, who maintains them and who approves purchases. A suitable workspace can then help the team review those records consistently. This example illustrates a sequence, not a client outcome: clarify the decision, establish responsibility, test the tool and review actual use before expanding it.",
+        ],
+      },
+      {
+        id: "compare-the-commitment",
+        heading: "Compare the full commitment",
+        paragraphs: [
+          "Use the same questions when comparing an advisor, software or a combined offer. Include the time your team must contribute, not only the quoted fee.",
+        ],
+        bullets: [
+          "Fit: Which specific problem will this address, and what falls outside the scope?",
+          "Setup: What records, cleanup, configuration and training are required?",
+          "Ownership: Who keeps information current and acts on the findings?",
+          "Cost and flexibility: What are the setup costs, ongoing fees, contract terms and options for exporting records?",
+          "Evidence: What practical demonstration or agreed deliverable will show whether the solution fits?",
+        ],
+      },
+      {
+        id: "vanteloq-fit",
+        heading: "Where Vanteloq Advisory and Workspace fit",
+        paragraphs: [
+          "Vanteloq Inc. provides two related offers. Vanteloq Advisory is the human service for understanding a business problem, choosing a priority and implementing a practical improvement. A Workspace subscription is not required for a focused Advisory engagement.",
+          "Vanteloq Workspace is the software product. It helps a team keep approved sources, analysis, decisions, responsibilities and follow-up work connected. Available workflows depend on the selected plan, configured records and supported connections, so review the current product scope before choosing a setup.",
+          "Advisory scope and Workspace access are agreed separately. A business can use either one or combine them when the problem requires both process work and a shared operating system.",
+        ],
+      },
+    ],
+    sources: [
+      {
+        title: "Could an ERP system be right for your business?",
+        publisher: "Business Development Bank of Canada",
+        url: "https://www.bdc.ca/en/articles-tools/entrepreneur-toolkit/guides/erp",
+      },
+      {
+        title: "Vanteloq Advisory",
+        publisher: "Vanteloq",
+        url: "https://vanteloq.com/advisory",
+      },
+      {
+        title: "How Vanteloq Workspace works",
+        publisher: "Vanteloq",
+        url: "https://vanteloq.com/how-it-works",
+      },
+    ],
+    related: ["how-to-analyze-business-data-for-growth", "what-should-small-business-dashboard-show", "data-analytics-for-small-business"],
+  },
+  {
     slug: "bookloq-vs-traditional-accounting-software",
     title: "BookLoQ vs. Traditional Accounting Software",
     seoTitle: "BookLoQ vs. Traditional Accounting Software | Vanteloq",
@@ -1183,6 +1281,7 @@ const articles: readonly ResourceArticle[] = [
     updated: "2026-09-19",
     hero: {
       src: "/brand/bookloq-cash-control-v1.png",
+      webpSrc: "/brand/delivery-2026-10/bookloq-cash-control-lossless.webp",
       alt: "A BookLoQ financial workspace connecting source records, reviewed accounting activity and a visible cash forecast.",
       width: 1774,
       height: 887,
@@ -1316,7 +1415,66 @@ const articles: readonly ResourceArticle[] = [
   },
 ];
 
-export const RESOURCE_ARTICLES = articles;
+const CONSOLIDATED_RESOURCE_SECTIONS: Readonly<Record<string, ArticleSection>> = {
+  "how-to-analyze-business-data-for-growth": {
+    id: "decision-rhythm",
+    heading: "Move From Metrics to a Decision Rhythm",
+    paragraphs: [
+      "A focused measurement system uses three kinds of signals. Outcome metrics show whether the business result changed. Driver metrics show where a team can intervene before the outcome is final. Guardrail metrics protect margin, cash, capacity and customer quality while the business grows.",
+      "Separate the observation from the explanation. A decline in website conversion is a recorded pattern. A change in traffic quality is one possible explanation, alongside tracking errors, offer mix, seasonality, pricing or page performance. Treat each explanation as a hypothesis and identify the evidence that would distinguish between them.",
+      "Use the same small set of measures on a consistent schedule. End each review with a decision, owner, due date and expected signal. At the next review, compare the expected result with what happened and revise the assumption, action or measurement when the evidence does not agree.",
+    ],
+    bullets: [
+      "Outcome: What business result are we trying to improve?",
+      "Driver: Which action or operating condition can influence it?",
+      "Guardrail: Which margin, cash, capacity or customer measure must not deteriorate?",
+      "Review: Who owns the next action, and when will the evidence be checked?",
+    ],
+  },
+  "what-should-small-business-dashboard-show": {
+    id: "leading-lagging-review",
+    heading: "Separate Leading, Lagging and Guardrail Indicators",
+    paragraphs: [
+      "Lagging indicators such as revenue, gross profit and ending cash confirm what has already happened. Leading indicators such as qualified opportunities, stockouts, open purchase commitments or overdue follow-up can signal where a result may move next. Neither type is sufficient alone, and a leading indicator is useful only when its relationship to the outcome is reviewed over time.",
+      "Add guardrails so one improvement does not hide another problem. Sales growth can look positive while margin, cash collection, service quality or team capacity weakens. A compact monthly review should compare the result with its definition, source, period, target or reference point, and the action taken at the prior review.",
+    ],
+    bullets: [
+      "Weekly: review a few operating drivers and material exceptions.",
+      "Monthly: reconcile financial outcomes, compare leading signals and record decisions.",
+      "Quarterly: retire measures that no longer change a decision and confirm definitions with the people who use them.",
+    ],
+  },
+  "small-business-cash-flow-management-guide": {
+    id: "confidence-and-variance",
+    heading: "Use Confidence Levels and a Weekly Variance Review",
+    paragraphs: [
+      "A cash forecast becomes more useful when confirmed items are separated from estimates. Confirmed cash can include a verified opening balance, scheduled payroll and approved bills. Expected items have reasonable evidence but uncertain timing. Planning cases show optional purchases, delayed receipts or other assumptions that should not quietly increase the conservative balance.",
+      "Each week, replace the forecast period with actual receipts and payments, compare the difference and record why it occurred. Timing variances, missing commitments and recurring estimate errors teach the business where its forecast needs better inputs. Update the remaining weeks, but preserve enough history to see whether the process is improving.",
+    ],
+    bullets: [
+      "Confirmed: supported by current records and an agreed date.",
+      "Expected: reasonably likely, with the uncertainty kept visible.",
+      "Planning case: a deliberate scenario that must not be presented as committed cash.",
+      "Variance review: forecast amount and date compared with the actual result and explanation.",
+    ],
+  },
+};
+
+const consolidatedArticles = articles.map((article) => {
+  const additionalSection = CONSOLIDATED_RESOURCE_SECTIONS[article.slug];
+  if (!additionalSection) return article;
+  return {
+    ...article,
+    updated: "2026-10-13",
+    sections: [...article.sections, additionalSection],
+  } satisfies ResourceArticle;
+});
+
+export const RESOURCE_ARTICLES: readonly ResourceArticle[] = [
+  ...consolidatedArticles,
+  ...ADVISORY_RESOURCE_ARTICLES,
+  ...SECTOR_GUIDES,
+];
 
 export function getArticle(slug: string) {
   return RESOURCE_ARTICLES.find((article) => article.slug === slug);

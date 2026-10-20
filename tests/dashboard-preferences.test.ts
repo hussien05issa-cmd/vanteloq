@@ -46,11 +46,32 @@ test("dashboard preferences provide three distinct goal rings for existing accou
   assert.equal(new Set(normalized.goalRings).size, 3);
 });
 
-test("the fresh owner dashboard shows six standard cards while all eleven metrics remain available", () => {
+test("the fresh owner dashboard shows four standard commerce cards while all eleven metrics remain available", () => {
   const preferences = parseDashboardPreferencesJson(null);
-  assert.deepEqual(preferences.widgets.filter(widget => widget.visible).map(widget => widget.id), ["net_revenue", "gross_profit", "gross_margin", "cash_balance", "cash_flow", "inventory_value"]);
+  assert.deepEqual(preferences.widgets.filter(widget => widget.visible).map(widget => widget.id), ["net_revenue", "gross_profit", "gross_margin", "transactions"]);
   assert.equal(preferences.widgets.length, 11);
   assert.ok(preferences.widgets.every(widget => widget.size === "standard"));
+});
+
+test("the fresh sales dashboard shares the four standard commerce cards", () => {
+  const preferences = dashboardPreferencePreset("sales");
+  assert.deepEqual(preferences.widgets.filter(widget => widget.visible).map(widget => widget.id), ["net_revenue", "gross_profit", "gross_margin", "transactions"]);
+  assert.equal(preferences.widgets.length, 11);
+  assert.ok(preferences.widgets.every(widget => widget.size === "standard"));
+});
+
+test("saved owner and sales layouts retain explicit legacy visibility and widths", () => {
+  for (const profile of ["owner", "sales"] as const) {
+    const legacyVisible = profile === "owner"
+      ? ["net_revenue", "gross_profit", "gross_margin", "cash_balance", "cash_flow", "inventory_value"]
+      : ["net_revenue", "transactions", "average_order_value", "units_sold", "gross_profit", "gross_margin"];
+    const preferences = dashboardPreferencePreset(profile);
+    preferences.widgets = [...dashboardWidgetIds].reverse().map((id, index) => ({ id, visible: legacyVisible.includes(id), size: index < 2 ? "wide" : "standard" }));
+    const normalized = parseDashboardPreferencesJson(JSON.stringify(preferences));
+    assert.deepEqual(normalized.widgets, preferences.widgets);
+    assert.equal(normalized.widgets.filter(widget => widget.visible).length, 6);
+    if (profile === "owner") assert.equal(normalized.widgets.find(widget => widget.id === "transactions")?.visible, false);
+  }
 });
 
 test("saved owner widget visibility, order and sizes survive the new default layout", () => {

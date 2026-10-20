@@ -1,4 +1,4 @@
-export const PROVIDER_PRIVACY_NOTICE_VERSION = "provider-privacy-2026-09-26";
+export const PROVIDER_PRIVACY_NOTICE_VERSION = "provider-privacy-2026-10-04";
 export const providerPrivacy = {
   square: { name: "Square", url: "https://squareup.com/ca/en/legal/general/privacy" },
   stripe: { name: "Stripe", url: "https://stripe.com/privacy" },

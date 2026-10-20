@@ -59,6 +59,7 @@ const bookloqFeatureByAction: Readonly<Record<string, FeatureKey>> = Object.free
   categorize_transaction: "bookloq.transactions",
   create_category: "bookloq.chart_of_accounts",
   match_transaction: "bookloq.reconciliation",
+  unmatch_transaction: "bookloq.reconciliation",
   upsert_budget: "bookloq.cash_intelligence",
   month_end_status: "bookloq.financial_statements",
   alert_status: "bookloq.anomaly_detection",

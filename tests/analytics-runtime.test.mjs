@@ -4,6 +4,8 @@ import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { transform } from "esbuild";
 import * as publicMarketingEvents from "../shared/public-marketing-events.ts";
+import * as consentNavigation from "../app/analytics-consent-navigation.ts";
+import * as publicRoutes from "../app/analytics-public-routes.ts";
 
 const source = await readFile(new URL("../app/google-analytics-consent.tsx", import.meta.url), "utf8");
 const { code } = await transform(source, { loader: "tsx", format: "cjs", jsx: "automatic", target: "es2022" });
@@ -11,8 +13,10 @@ const { code } = await transform(source, { loader: "tsx", format: "cjs", jsx: "a
 // Executes the real effect bodies with changed inputs and browser event targets.
 // This complements browser layout checks; it is not a React DOM renderer.
 function fixture({ root = true, pathname = "/", search = "" } = {}) {
-  const calls = [], cookieWrites = [], scripts = new Map(), storage = new Map(), cookies = new Map(), rootListeners = new Set();
+  const calls = [], disableStates = [], cookieWrites = [], scripts = new Map(), storage = new Map(), cookies = new Map(), rootListeners = new Set();
   let effects = [], cleanups = [];
+  let networkBlocked = false, reloads = 0;
+  let tree, storageWritable = true;
   class ElementMock extends EventTarget {
     constructor({ dataset = {}, tag = "button", publicSite = true } = {}) { super(); this.dataset = dataset; this.tag = tag; this.publicSite = publicSite; }
     closest(selector) { return selector === ".public-site" ? (this.publicSite ? this : null) : selector === "[data-public-event]" && this.dataset.publicEvent ? this : null; }
@@ -20,9 +24,9 @@ function fixture({ root = true, pathname = "/", search = "" } = {}) {
   }
   class CustomEventMock extends Event { constructor(type, options = {}) { super(type); this.detail = options.detail; } }
   const window = Object.assign(new EventTarget(), {
-    location: { origin: "https://vanteloq.com", pathname, search },
-    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, String(value)) },
-    gtag: (...args) => calls.push(args),
+    location: { origin: "https://vanteloq.com", pathname, search, reload() { reloads++; } },
+    localStorage: { getItem: key => storage.get(key) ?? null, setItem: (key, value) => { if (!storageWritable) throw new Error("Storage is unavailable"); storage.set(key, String(value)); } },
+    gtag: (...args) => { calls.push(args); disableStates.push(window["ga-disable-G-TEST123"]); },
   });
   const document = Object.assign(new EventTarget(), {
     getElementById: id => scripts.get(id) ?? null,
@@ -45,17 +49,28 @@ function fixture({ root = true, pathname = "/", search = "" } = {}) {
     "next/link": { default: noop }, "next/navigation": { usePathname: () => window.location.pathname },
     "./product-brand-logo": { default: noop }, "./use-modal-focus": { useModalFocus: noop },
     "../shared/public-marketing-events": publicMarketingEvents,
-    "./analytics-consent-navigation": { createCookieNoticeNavigation: () => ({ href: "/cookies" }), shouldShowConsentPanel: () => false },
+    "./analytics-consent-navigation": { ...consentNavigation, shouldShowConsentPanel: () => true },
+    "./analytics-public-routes": publicRoutes,
+    "./public-appearance": { usePublicAppearance: () => ({ theme: "dark" }) },
+    "./analytics-network-policy": { blockOptionalAnalyticsNetwork: () => { networkBlocked = true; }, optionalAnalyticsNetworkBlocked: () => networkBlocked },
     "./analytics-public-surface": { getPublicRoot: () => root, getServerPublicRoot: () => false, subscribePublicRoot(listener) { rootListeners.add(listener); return () => rootListeners.delete(listener); } },
   };
   const evaluatedModule = { exports: {} };
   vm.runInNewContext(code, { module: evaluatedModule, exports: evaluatedModule.exports, require(name) { assert.ok(Object.hasOwn(modules, name), `Unexpected import: ${name}`); return modules[name]; }, process: { env: { NEXT_PUBLIC_GOOGLE_ANALYTICS_ID: "G-TEST123" } }, window, document, Event, Element: ElementMock, CustomEvent: CustomEventMock });
   return {
-    window, calls, cookies, cookieWrites, scripts,
-    commit(choice) { for (const cleanup of cleanups) cleanup(); if (choice !== undefined) storage.set("vanteloq:cookie-consent:v1", choice); effects = []; evaluatedModule.exports.GoogleAnalyticsConsent(); cleanups = effects.map(run => run()).filter(value => typeof value === "function"); },
+    window, calls, disableStates, cookies, cookieWrites, scripts,
+    get networkBlocked() { return networkBlocked; }, get reloads() { return reloads; },
+    commit(choice) { for (const cleanup of cleanups) cleanup(); if (choice !== undefined) storage.set("vanteloq:cookie-consent:v1", choice); effects = []; tree = evaluatedModule.exports.GoogleAnalyticsConsent(); cleanups = effects.map(run => run()).filter(value => typeof value === "function"); },
+    failStorageWrites() { storageWritable = false; },
+    choose(choice) {
+      const label = choice === "analytics" ? "Allow analytics" : "Essential only";
+      const visit = node => Array.isArray(node) ? node.flatMap(visit) : node && typeof node === "object" ? [node, ...visit(node.props?.children)] : [];
+      const button = visit(tree).find(node => node.type === "button" && node.props.children === label);
+      assert.ok(button); button.props.onClick();
+    },
     setRoot(value) { root = value; for (const listener of rootListeners) listener(); },
     withdrawInAnotherTab() { storage.set("vanteloq:cookie-consent:v1", "essential"); const event = new Event("storage"); Object.defineProperty(event, "key", { value: "vanteloq:cookie-consent:v1" }); window.dispatchEvent(event); },
-    convert() { window.dispatchEvent(new CustomEventMock("vanteloq:public-conversion", { detail: "inquiry_sent" })); },
+    convert(detail = "inquiry_sent") { window.dispatchEvent(new CustomEventMock("vanteloq:public-conversion", { detail })); },
     interact(type, dataset, options = {}) { const event = new Event(type); Object.defineProperty(event, "target", { value: new ElementMock({ dataset, ...options }) }); document.dispatchEvent(event); },
     finishLoad() { const script = scripts.get("vanteloq-google-analytics"); assert.ok(script); script.dispatchEvent(new Event("load")); },
     commands: name => calls.filter(call => call[0] === name),
@@ -64,16 +79,36 @@ function fixture({ root = true, pathname = "/", search = "" } = {}) {
   };
 }
 
-test("allow, withdraw, allow grants again without duplicating script or configuration", t => {
+test("withdrawal locks SDK transports and renewed permission uses a fresh document", t => {
   const f = fixture(); t.after(() => f.close()); f.commit("analytics"); f.finishLoad(); f.commit("essential");
   assert.equal(f.lastConsent().analytics_storage, "denied"); assert.equal(f.window["ga-disable-G-TEST123"], true);
   f.commit("analytics");
-  assert.equal(f.lastConsent().analytics_storage, "granted"); assert.equal(f.lastConsent().ad_storage, "denied");
-  assert.equal(f.window["ga-disable-G-TEST123"], false); assert.equal(f.scripts.size, 1); assert.equal(f.commands("config").length, 1); assert.equal(f.commands("event").length, 2);
+  assert.equal(f.networkBlocked, true); assert.equal(f.reloads, 0, "automatic effects must not refresh a form");
+  f.choose("analytics"); assert.equal(f.reloads, 1, "only deliberate renewed permission refreshes");
+  assert.equal(f.lastConsent().analytics_storage, "denied");
+  assert.equal(f.window["ga-disable-G-TEST123"], true); assert.equal(f.scripts.size, 1); assert.equal(f.commands("config").length, 1); assert.equal(f.commands("event").length, 1);
+});
+
+test("explicit withdrawal blocks queued transports even when saving the choice fails", t => {
+  const f = fixture(); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
+  f.failStorageWrites(); f.choose("essential");
+  assert.equal(f.networkBlocked, true);
+  assert.equal(f.window["ga-disable-G-TEST123"], true);
+  assert.equal(f.reloads, 0);
 });
 test("late load after withdrawal cannot configure or send", t => {
   const f = fixture(); t.after(() => f.close()); f.commit("analytics"); f.commit("essential"); f.finishLoad();
   assert.equal(f.commands("config").length, 0); assert.equal(f.commands("event").length, 0); assert.equal(f.lastConsent().analytics_storage, "denied");
+});
+
+test("withdrawal disables measurement before the SDK receives any denied-consent command", t => {
+  const f = fixture(); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
+  const before = f.calls.length;
+  f.withdrawInAnotherTab();
+  for (let index = before; index < f.calls.length; index++) {
+    assert.equal(f.disableStates[index], true, "SDK must already be disabled when it processes withdrawal");
+  }
+  assert.equal(f.lastConsent().analytics_storage, "denied");
 });
 test("public navigation preserves cookies; withdrawal removes only analytics", t => {
   const f = fixture(); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
@@ -128,11 +163,26 @@ test("a select measures its change once and DOM clicks cannot fake completion", 
   f.convert(); assert.equal(f.commands("event").at(-1)[1], "inquiry_sent");
 });
 
-test("only the explicit retail solution route gains public measurement", t => {
+test("registered industry solutions gain public measurement, unknown industry routes do not", t => {
   const f = fixture({ pathname: "/solutions/retail" }); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
   assert.equal(f.commands("event").length, 1);
   f.window.location.pathname = "/solutions/restaurants"; f.commit();
+  assert.equal(f.commands("event").length, 2);
+  f.window.location.pathname = "/solutions/unlisted"; f.commit();
   f.interact("click", { publicEvent: "hero_play", publicSection: "hero" });
-  assert.equal(f.commands("event").length, 1);
+  assert.equal(f.commands("event").length, 2);
   assert.equal(f.window["ga-disable-G-TEST123"], true);
+});
+
+test("the Advisory landing page is an approved public measurement route", () => {
+  assert.equal(publicRoutes.isPublicMeasurementPath("/advisory"), true);
+});
+
+test("confirmed public forms use a fixed conversion vocabulary", t => {
+  const f = fixture({ pathname: "/advisory" }); t.after(() => f.close()); f.commit("analytics"); f.finishLoad();
+  const initial = f.commands("event").length;
+  f.convert("advisory_inquiry_sent");
+  f.convert("demo_request_sent");
+  f.convert("private_form_value");
+  assert.deepEqual(f.commands("event").slice(initial).map(call => call[1]), ["advisory_inquiry_sent", "demo_request_sent"]);
 });

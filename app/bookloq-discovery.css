@@ -15,6 +15,7 @@
 .resource-article-browser > summary strong, .bookloq-number-guide > summary strong { color: #142b47; font-size: 18px; line-height: 1.4; }
 .resource-article-browser > summary small, .bookloq-number-guide > summary small { color: #465d76; font-size: 14px; line-height: 1.5; }
 .disclosure-plus { display: grid; place-items: center; flex: 0 0 36px; width: 36px; height: 36px; border: 1px solid #c7d7e9; border-radius: 50%; color: #234b7a; font-size: 24px; transition: transform .18s ease; }
+.resource-article-browser > summary > .disclosure-plus > svg { display: block; }
 details[open] > summary > .disclosure-plus { transform: rotate(45deg); }
 .resource-article-browser > summary:hover, .bookloq-number-guide > summary:hover { background: #eaf1fa; }
 .resource-article-browser :is(summary,a):focus-visible,

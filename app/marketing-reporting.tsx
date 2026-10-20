@@ -5,6 +5,9 @@ import { apiFetch } from "./supabase-browser";
 import type { MarketingPlanDraft } from "../domain/marketing-workbench";
 import { signedBarGeometry } from "../domain/chart-geometry";
 import { metricChange, REPORT_NAMES, REPORT_VIEWS, reportSuggestions, type MarketingReport, type ReportColumn, type ReportSource, type ReportView } from "../domain/marketing-reporting";
+import { formatRecordedTimestamp } from "../domain/executive-presentation";
+import { marketingLeadCoverageForReport } from "../domain/marketing-source-summary";
+import { marketingReportRequestKey, readMarketingReport, readMarketingSources, visibleMarketingReport, type MarketingReportSnapshot } from "./marketing-report-reader";
 
 const viewLabels: Record<ReportView, string> = { daily: "Daily trend", channels: "Acquisition channels", pages: "Top pages", devices: "Devices", queries: "Search queries", realtime: "Realtime activity", keywords: "Local search terms", campaigns: "Campaigns", platforms: "Facebook and Instagram ads" };
 export function formatMarketingValue(value: number | null | undefined, column: ReportColumn, currency: string | null) {
@@ -57,7 +60,7 @@ export function MarketingReportVisual({ report }: { report: MarketingReport }) {
 export function MarketingReportBody({ report, onPlan }: { report: MarketingReport; onPlan?: (draft: MarketingPlanDraft) => void }) {
   const suggestions = reportSuggestions(report);
   return <>
-    <div className="mr-provenance"><span>{report.view === "realtime" ? "Rolling last 30 minutes" : `${report.period.start} to ${report.period.end}`}</span><span>{report.timeZone}</span><span>Fetched {new Date(report.fetchedAt).toLocaleTimeString("en-CA", { hour: "numeric", minute: "2-digit" })}</span></div>
+    <div className="mr-provenance"><span>{report.view === "realtime" ? "Rolling last 30 minutes" : `${report.period.start} to ${report.period.end}`}</span><span>{report.timeZone}</span><span>Fetched {formatRecordedTimestamp(report.fetchedAt) ?? "time unavailable"}</span></div>
     {report.warnings.length > 0 && <div className="mr-warning" role="status">{report.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div>}
     {Object.keys(report.totals).length > 0 && <div className="mr-kpis" data-count={report.columns.length}>{report.columns.map((column) => {
       const value = report.totals[column.key], previous = report.previous?.[column.key] ?? null;
@@ -68,41 +71,43 @@ export function MarketingReportBody({ report, onPlan }: { report: MarketingRepor
     {report.view !== "realtime" && <MarketingReportVisual key={`${report.dataset}:${report.view}`} report={report}/>}
     {suggestions.length > 0 && <div className="mr-suggestions"><h3>Worth reviewing next</h3>{suggestions.map((item) => <article key={item.title}><h4>{item.title}</h4><p>{item.detail}</p>{onPlan && <button type="button" onClick={() => onPlan({ title: item.title, channel: report.dataset === "meta_ads" ? "meta" : report.dataset === "google_analytics" ? "website" : "google", eventType: "audit", objective: item.detail, notes: `Source: ${REPORT_NAMES[report.dataset]} · ${viewLabels[report.view]}\nPeriod: ${report.period.start} to ${report.period.end}\nFetched: ${report.fetchedAt}\nReview the same source and comparison period after the change. Record external factors. This suggestion is not a promise of improved results.` })}>Plan this action →</button>}</article>)}</div>}
     {report.rows.length > 0 && <details className="mr-table-wrap" open><summary>Source details · {report.rows.length} returned {report.rows.length === 1 ? "row" : "rows"}</summary><div tabIndex={0} role="region" aria-label="Scrollable source report"><table><caption>{REPORT_NAMES[report.dataset]} · {viewLabels[report.view]}</caption><thead><tr><th scope="col">{report.view === "daily" ? "Date" : "Source dimension"}</th>{report.columns.map((column) => <th key={column.key} scope="col">{column.label}</th>)}</tr></thead><tbody>{report.rows.map((row, index) => <tr key={`${row.label}:${index}`}><th scope="row">{row.label}{row.note && <small>{row.note}</small>}</th>{report.columns.map((column) => <td key={column.key}>{formatMarketingValue(row.values[column.key], column, report.currency)}</td>)}</tr>)}</tbody></table></div></details>}
-    <aside className="mr-method"><h3>What these numbers mean</h3><ul>{report.limitations.map((line) => <li key={line}>{line}</li>)}</ul></aside>
+    <aside className="mr-method"><h3>What these numbers mean</h3><p>{marketingLeadCoverageForReport(report)}</p><ul>{report.limitations.map((line) => <li key={line}>{line}</li>)}</ul></aside>
   </>;
 }
 
-export default function MarketingReporting({ locationId, navigate, onPlan }: { locationId: string | null; navigate: (page: "Integrations" | "Advisor") => void; onPlan?: (draft: MarketingPlanDraft) => void }) {
+type MarketingReportingProps = { locationId: string | null; initialSourceId?: string; initialDays?: number; navigate: (page: "Integrations" | "Advisor") => void; onPlan?: (draft: MarketingPlanDraft) => void };
+
+function MarketingReportingPanel({ locationId, initialSourceId, initialDays, navigate, onPlan }: MarketingReportingProps) {
   const [sources, setSources] = useState<ReportSource[]>([]), [selectedId, setSelectedId] = useState("");
-  const [view, setView] = useState<ReportView>("daily"), [days, setDays] = useState(28);
-  const [report, setReport] = useState<MarketingReport | null>(null), [error, setError] = useState("");
+  const [view, setView] = useState<ReportView>("daily"), [days, setDays] = useState(initialDays && [7, 28, 90].includes(initialDays) ? initialDays : 28);
+  const [snapshot, setSnapshot] = useState<MarketingReportSnapshot | null>(null), [error, setError] = useState("");
   const [loading, setLoading] = useState(true), [refresh, setRefresh] = useState(0), [monitor, setMonitor] = useState(false);
   const [sourceRefresh, setSourceRefresh] = useState(0);
   const sequence = useRef(0);
-  const base = `/api/v1/marketing/reports${locationId ? `?location=${encodeURIComponent(locationId)}` : ""}`;
   const selected = sources.find((source) => source.id === selectedId);
-  const clearReport = useCallback(() => { setLoading(true); setError(""); setReport(null); }, []);
+  const request = selected ? { locationId, selectionId: selected.id, dataset: selected.dataset, view, days } : null;
+  const report = visibleMarketingReport(snapshot, request)?.report ?? null;
+  const clearReport = useCallback(() => { setLoading(true); setError(""); setSnapshot(null); }, []);
   const refreshReport = useCallback(() => { clearReport(); setRefresh((current) => current + 1); }, [clearReport]);
   useEffect(() => {
     const controller = new AbortController();
-    void apiFetch(base, { signal: controller.signal, cache: "no-store" }).then(async (response) => {
-      const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || "Sources could not be loaded.");
+    void readMarketingSources(apiFetch, locationId, controller.signal).then((nextSources) => {
       if (controller.signal.aborted) return;
-      const nextSource = body.sources.find((source: ReportSource) => source.status === "ready") ?? body.sources[0];
-      setSources(body.sources); setSelectedId(nextSource?.id ?? ""); setLoading(nextSource?.status === "ready");
+      const nextSource = initialSourceId ? nextSources.find(source => source.id === initialSourceId) : undefined;
+      setSources(nextSources); setSelectedId(nextSource?.id ?? ""); setLoading(nextSource?.status === "ready");
+      if (initialSourceId && !nextSource) setError("The selected source is no longer available in this location. Choose another source or review its connection.");
     }).catch((caught) => { if (!controller.signal.aborted) { setError(caught instanceof Error ? caught.message : "Sources could not be loaded."); setLoading(false); } });
     return () => controller.abort();
-  }, [base, sourceRefresh]);
+  }, [locationId, initialSourceId, sourceRefresh]);
   useEffect(() => {
     if (!selected || selected.status !== "ready") return;
     const controller = new AbortController(), current = ++sequence.current;
-    const url = `${base}${base.includes("?") ? "&" : "?"}selectionId=${encodeURIComponent(selected.id)}&view=${view}&days=${days}`;
-    void apiFetch(url, { signal: controller.signal, cache: "no-store" }).then(async (response) => {
-      const body = await response.json(); if (!response.ok) throw new Error(body.error?.message || "This report could not be loaded.");
-      if (!controller.signal.aborted && current === sequence.current) { setReport(body.report); setLoading(false); }
+    const context = { locationId, selectionId: selected.id, dataset: selected.dataset, view, days };
+    void readMarketingReport(apiFetch, context, controller.signal).then((nextReport) => {
+      if (!controller.signal.aborted && current === sequence.current) { setSnapshot({ requestKey: marketingReportRequestKey(context), status: "ready", report: nextReport, error: "" }); setLoading(false); }
     }).catch((caught) => { if (!controller.signal.aborted && current === sequence.current) { setError(caught instanceof Error ? caught.message : "This report could not be loaded."); setLoading(false); setMonitor(false); } });
     return () => controller.abort();
-  }, [base, selected, view, days, refresh]);
+  }, [locationId, selected, view, days, refresh]);
   useEffect(() => {
     if (!monitor || selected?.status !== "ready" || selected.dataset === "google_business_profile") return;
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") refreshReport(); }, view === "realtime" ? 60_000 : 600_000);
@@ -114,8 +119,12 @@ export default function MarketingReporting({ locationId, navigate, onPlan }: { l
     {selected?.status === "ready" && <label className="mr-monitor"><input type="checkbox" checked={monitor} disabled={selected.dataset === "google_business_profile"} onChange={(event) => setMonitor(event.target.checked)}/>{selected.dataset === "google_business_profile" ? "Business Profile reports refresh only when requested." : `Refresh while this report is open: every ${view === "realtime" ? "minute" : "10 minutes"}. Stops when the tab is hidden or a request fails.`}</label>}
     {error && <div className="mr-warning" role="alert"><b>Report unavailable</b><p>{error}</p><button onClick={() => { clearReport(); setSources([]); setSelectedId(""); setView("daily"); setSourceRefresh((current) => current + 1); }}>Reload sources and try again</button></div>}
     {loading && <div className="mr-empty" role="status"><b>Loading approved source data…</b><p>Checking access and retrieving the provider report.</p></div>}
-    {!loading && !error && (!selected || selected.status !== "ready") && <div className="mr-empty"><h3>{selected ? "Approve this connection first" : "Connect your first marketing source"}</h3><p>In Integrations, connect your account, choose the correct property or ad account, assign its location and approve its sample. No measurements appear before approval.</p><button onClick={() => navigate("Integrations")}>Set up reporting →</button></div>}
+    {!loading && !error && (!selected || selected.status !== "ready") && <div className="mr-empty"><h3>{selected ? "Review this connection first" : sources.length ? "Choose the source to review" : "Connect your first marketing source"}</h3><p>{!selected && sources.length ? "Select the exact property, profile or ad account above. Each report keeps its own dates, currency and source definitions." : "In Integrations, check the connection, selected resource, location and required approval. Business Profile measures are fetched only when requested."}</p>{(selected || !sources.length) && <button onClick={() => navigate("Integrations")}>Set up reporting →</button>}</div>}
     {!loading && report && <MarketingReportBody report={report} onPlan={onPlan}/>}
     <aside className="mr-method"><h3>Coverage, without guesswork</h3><p>GA4 measures tagged website activity. Search Console reports Google search visibility. Business Profile reports local discovery. Meta advertising is separate from Facebook Page and Instagram organic insights, which are not yet available in Vanteloq and require their own permissions and resource setup.</p><button onClick={() => navigate("Advisor")}>Discuss approved marketing data with Vanteloq AI →</button><p>Vanteloq AI can use permitted, synchronized marketing totals. Refresh your approved connection in Integrations to update that saved evidence. Refreshing this report does not synchronize Vanteloq AI&apos;s evidence. Search terms, page addresses and Business Profile content from these on-demand reports are not sent to it.</p></aside>
   </section>;
+}
+
+export default function MarketingReporting(props: MarketingReportingProps) {
+  return <MarketingReportingPanel key={JSON.stringify([props.locationId, props.initialSourceId, props.initialDays])} {...props}/>;
 }

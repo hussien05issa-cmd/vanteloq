@@ -62,7 +62,9 @@
 .operating-shell .data-hub .provider-parity-contract > header span { color: var(--connection-muted); font-size: 1rem !important; }
 .operating-shell .data-hub .provider-parity-contract > header > strong { background: #eaf2fb; color: #244e78; border-color: var(--connection-line); font-size: .875rem !important; }
 .operating-shell .data-hub .provider-parity-body { background: var(--connection-surface); grid-template-columns: 1fr; }
-.operating-shell .data-hub .provider-parity-body > img { width: 100%; height: auto; min-height: 0; max-height: 340px; object-fit: contain; background: #f0f5fa; border: 0; }
+.operating-shell .data-hub .provider-parity-body > img,
+.operating-shell .data-hub .provider-parity-body > .provider-parity-artwork > img { width: 100%; height: auto; min-height: 0; max-height: 340px; object-fit: contain; background: #f0f5fa; border: 0; }
+.provider-parity-artwork { display: block; min-width: 0; }
 .operating-shell .data-hub .provider-capability-list { padding: 20px; gap: 16px; }
 .operating-shell .data-hub .provider-capability-list article { padding: 16px; background: #f0f5fa; border: 1px solid var(--connection-line); border-radius: 12px; }
 .operating-shell .data-hub .provider-capability-list article > span { color: var(--connection-ink); font-size: 1rem !important; }

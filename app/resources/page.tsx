@@ -3,18 +3,20 @@ import Link from "next/link";
 import { ResourceShell, ResourceVisual } from "./components";
 import ResourceArticleBrowser from "../resource-article-browser";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory } from "./content";
-import { DEFAULT_SOCIAL_IMAGE } from "../seo";
+import { DEFAULT_SOCIAL_IMAGE, safeJsonLd } from "../seo";
+import { resourceCollectionJsonLd, RESOURCE_SEARCH_ROBOTS } from "./search";
 
 export const metadata: Metadata = {
   title: "Small Business Operations Resources | Vanteloq",
   description: "Practical guides to inventory, business analytics, finance, POS data, marketing measurement, operations and responsible AI for small businesses.",
-  alternates: { canonical: "/resources" },
+  alternates: { canonical: "/resources", types: { "application/rss+xml": "/resources/feed.xml" } },
+  robots: RESOURCE_SEARCH_ROBOTS,
   openGraph: {
     type: "website",
     url: "/resources",
     title: "Small Business Operations Resources | Vanteloq",
     description: "Actionable, source-aware guides for business owners and operators.",
-    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1487, height: 1058, alt: "Vanteloq business operating view" }],
+    images: [{ url: DEFAULT_SOCIAL_IMAGE, width: 1254, height: 1254, alt: "Vanteloq glass blue and silver logo" }],
   },
   twitter: {
     card: "summary_large_image",
@@ -26,9 +28,11 @@ export const metadata: Metadata = {
 
 export default function ResourcesPage() {
   const featured = RESOURCE_ARTICLES[0];
+  const populatedCategories = RESOURCE_CATEGORIES.filter((category) => getArticlesByCategory(category.slug).length > 0);
   return (
     <ResourceShell>
       <main>
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(resourceCollectionJsonLd("/resources", "Vanteloq Business Resource Library", "Practical guides to inventory, business analytics, finance, marketing and operations for small businesses.", RESOURCE_ARTICLES)) }} />
         <section className="resource-hero">
           <div>
             <p className="resource-eyebrow">VANTELOQ FIELD GUIDES</p>
@@ -38,10 +42,10 @@ export default function ResourcesPage() {
           <aside aria-label="Editorial standard">
             <figure>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/brand/vanteloq-command-ledger.webp" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
+              <img src="/brand/glass-2026-10-12/command-ledger.svg" alt="Vanteloq command centre with sales, margin, cash, inventory and decision views." width={1487} height={1058} loading="eager" fetchPriority="high" />
               <figcaption>Real Vanteloq interface · Illustrative values</figcaption>
             </figure>
-            <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p></div>
+            <div><span>OUR EDITORIAL STANDARD</span><strong>Evidence before advice.</strong><p>Each guide separates facts, formulas, assumptions and limitations so you can see what a decision actually depends on.</p><Link href="/about/editorial">Read our editorial method</Link></div>
           </aside>
         </section>
 
@@ -51,10 +55,10 @@ export default function ResourcesPage() {
             <h2 id="browse-topics">Browse by operating question</h2>
           </div>
           <div className="resource-category-grid">
-            {RESOURCE_CATEGORIES.map((category) => (
+            {populatedCategories.map((category) => (
               <Link href={`/resources/${category.slug}`} key={category.slug}>
                 <ResourceVisual category={category.slug} compact />
-                <span>{getArticlesByCategory(category.slug).length ? `${getArticlesByCategory(category.slug).length} ${getArticlesByCategory(category.slug).length === 1 ? "guide" : "guides"}` : "Guides planned"}</span>
+                <span>{getArticlesByCategory(category.slug).length} {getArticlesByCategory(category.slug).length === 1 ? "guide" : "guides"}</span>
                 <strong>{category.name}</strong>
                 <p>{category.description}</p>
               </Link>
@@ -91,7 +95,7 @@ export default function ResourcesPage() {
 
         <section className="resource-wide-cta">
           <div><p className="resource-eyebrow">VANTELOQ</p><h2>Bring the operating view together.</h2><p>Organize source-backed sales, cash, inventory and daily work while your team keeps approval over decisions.</p></div>
-          <div><Link href="/?start=signup">Create your workspace</Link><Link className="secondary" href="/#platform">See the operating model</Link></div>
+          <div><Link href="/?start=signup">Build your dashboard</Link><Link className="secondary" href="/#platform">See the operating model</Link></div>
         </section>
       </main>
     </ResourceShell>

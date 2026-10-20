@@ -65,9 +65,16 @@ test("saved AI chats retain historical context while enforcing current personal 
       if (String(input) !== "https://api.openai.com/v1/responses") return originalFetch(input, init);
       const request = JSON.parse(init.body);
       const text = Array.isArray(request.input) ? request.input[0].content[0].text : request.input;
-      const question = JSON.parse(text.split("\n\nEvidence JSON:")[0].slice("Question: ".length));
-      const evidence = JSON.parse(text.split("\n\nEvidence JSON: ")[1].split("\n\nConversation memory: ")[0]);
-      const memory = JSON.parse(text.split("\n\nConversation memory: ")[1].split("\n\nExplicit response preferences: ")[0]);
+      // Parse each structured field independently. Product guidance can appear
+      // between memory and response preferences without becoming JSON content.
+      const field = prefix => {
+        const sections = text.split("\n\n").filter(section => section.startsWith(prefix));
+        assert.equal(sections.length, 1, `Expected one ${prefix} prompt field`);
+        return JSON.parse(sections[0].slice(prefix.length));
+      };
+      const question = field("Question: ");
+      const evidence = field("Evidence JSON: ");
+      const memory = field("Conversation memory: ");
       prompts.push({ question, evidence, memory, request });
       return Response.json({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: `Fictional saved answer: ${question}` }] }] });
     };

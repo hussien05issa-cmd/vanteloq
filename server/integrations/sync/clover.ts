@@ -192,6 +192,10 @@ export async function runSync(request: Request, requestId: string, context: Sync
         ON CONFLICT(organization_id, provider, connection_id, external_sale_id, external_line_id) DO UPDATE SET
           product_ref=excluded.product_ref, customer_ref=excluded.customer_ref, outlet_ref=excluded.outlet_ref,
           sold_at=excluded.sold_at, sku=excluded.sku, product_name=excluded.product_name,
+          cost_cents=CASE WHEN commerce_sale_lines.product_ref IS excluded.product_ref AND commerce_sale_lines.quantity_milli<>0
+            THEN CAST(ROUND(commerce_sale_lines.cost_cents * excluded.quantity_milli / (commerce_sale_lines.quantity_milli * 1.0)) AS INTEGER) ELSE 0 END,
+          cost_known=CASE WHEN commerce_sale_lines.product_ref IS excluded.product_ref AND commerce_sale_lines.quantity_milli<>0
+            THEN commerce_sale_lines.cost_known ELSE 0 END,
           quantity_milli=excluded.quantity_milli, net_sales_cents=excluded.net_sales_cents,
           discount_cents=excluded.discount_cents, source_payload_hash=excluded.source_payload_hash,
           sync_run_id=excluded.sync_run_id, updated_at=excluded.updated_at
@@ -235,8 +239,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
       const stagedSales = await runBatches(stagedStatements);
 
       // Clover's item cost is per unit while its quantity is fixed-point x1000.
-      // Recompute canonical and staged COGS from the authoritative item catalog;
-      // never infer missing costs from price or margin.
+      // Fill previously unknown catalog costs once. A later catalog price must
+      // not replace a captured historical amount or an explicit zero.
       await database.prepare(`
         UPDATE commerce_sale_lines AS line
         SET cost_cents = COALESCE((
@@ -245,8 +249,11 @@ export async function runSync(request: Request, requestId: string, context: Sync
           WHERE product.organization_id=line.organization_id AND product.provider=line.provider
             AND product.connection_id=line.connection_id AND product.external_product_id=line.product_ref
             AND product.default_cost_cents IS NOT NULL
-        ), 0)
-        WHERE line.organization_id=? AND line.provider=? AND line.connection_id=?
+        ), 0), cost_known=1
+        WHERE line.organization_id=? AND line.provider=? AND line.connection_id=? AND line.cost_known=0 AND line.cost_cents=0
+          AND EXISTS (SELECT 1 FROM commerce_products product WHERE product.organization_id=line.organization_id
+            AND product.provider=line.provider AND product.connection_id=line.connection_id AND product.external_product_id=line.product_ref
+            AND product.default_cost_cents IS NOT NULL)
       `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).run();
       await database.prepare(`
         UPDATE integration_staged_sales AS sale
@@ -258,16 +265,8 @@ export async function runSync(request: Request, requestId: string, context: Sync
         WHERE sale.organization_id=? AND sale.provider=? AND sale.connection_id=?
       `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).run();
 
-      await applyOwnerInventoryCosts(context.organizationId, connection.id, now);
-
-      const missingCost = await database.prepare(`
-        SELECT COUNT(*) count FROM commerce_sale_lines line
-        LEFT JOIN commerce_products product ON product.organization_id=line.organization_id AND product.provider=line.provider
-          AND product.connection_id=line.connection_id AND product.external_product_id=line.product_ref
-        WHERE line.organization_id=? AND line.provider=? AND line.connection_id=? AND line.net_sales_cents>0
-          AND (line.product_ref IS NULL OR (product.owner_cost_cents IS NULL AND product.default_cost_cents IS NULL))
-      `).bind(context.organizationId, CLOVER_PROVIDER, connection.id).first<{ count: number }>();
-      const missingCostCount = Number(missingCost?.count ?? 0);
+      const costCoverage = await applyOwnerInventoryCosts(context.organizationId, connection.id, now);
+      const missingCostCount = costCoverage.missingCostLines;
       const completedAt = new Date();
       const cursor = normalizationWarnings ? connection.lastSyncCursor : nextCheckpoint(previous, { orders: ordersPage.elements.length, items: itemsPage.elements.length, customers: customersPage.elements.length, payments: paymentsPage.elements.length }, completedAt);
       const backfillComplete = !normalizationWarnings && parseCheckpoint(cursor).watermark === completedAt.toISOString();

@@ -1,23 +1,25 @@
+import PublicSurface from "../public-surface";
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
 import Link from "next/link";
+import BrandSignature from "../brand-signature";
 import { SOCIAL_PROFILES } from "../social-profiles";
 import "./social-hub.css";
 
 export const metadata: Metadata = {
-  title: "Follow Vanteloq | Lexedge Consulting",
+  title: "Follow Vanteloq",
   description: "Connect with Vanteloq on Instagram, TikTok, YouTube and Facebook. Follow product updates, practical business insights and the team behind the platform.",
   alternates: { canonical: "/social" },
-  openGraph: { title: "Follow the Vanteloq Journey", description: "Business insights, product updates and the build behind Vanteloq by Lexedge Consulting.", url: "/social", type: "website" },
-  twitter: { title: "Follow the Vanteloq Journey", description: "Connect with Vanteloq by Lexedge Consulting." },
+  openGraph: { title: "Follow the Vanteloq Journey", description: "Business insights, product updates and the build behind Vanteloq Inc.", url: "/social", type: "website" },
+  twitter: { title: "Follow the Vanteloq Journey", description: "Connect with Vanteloq Inc." },
 };
 
 export default function SocialHubPage() {
-  return <div className="social-hub">
+  return <PublicSurface className="social-hub">
     <a className="social-hub-skip" href="#social-channels">Skip to Social Channels</a>
     <div className="social-hub-wrap">
       <header className="social-hub-nav">
-        <div className="social-hub-brand"><a href="https://lexedgeconsulting.com/">LEXEDGE</a><span aria-hidden="true">×</span><Link href="/">VANTELOQ</Link></div>
+        <div className="social-hub-brand"><Link href="/">VANTELOQ</Link></div>
         <Link className="social-hub-home" href="/">Visit Vanteloq <span aria-hidden="true">↗︎</span></Link>
       </header>
       <main>
@@ -28,7 +30,7 @@ export default function SocialHubPage() {
           <nav className="social-hub-cloud" aria-label="Jump to a social channel">
             {Object.entries(SOCIAL_PROFILES).map(([slug, profile]) => <a className={`social-hub-float social-hub-float-${slug}`} href={`#${slug}`} key={slug} aria-label={`Find Vanteloq on ${profile.name}`}><img src={`/brand/social/${slug}-mark.svg`} alt="" width={64} height={64}/></a>)}
           </nav>
-          <div className="social-hub-banner"><img src="/brand/social/lexedge-vanteloq-banner.jpg" alt="Lexedge Consulting and Vanteloq. Better systems. Stronger businesses. Consulting, analytics and business software." width={1536} height={585}/></div>
+          <div className="social-hub-banner"><BrandSignature /></div>
         </section>
         <section className="social-hub-grid" id="social-channels" aria-label="Vanteloq social media channels">
           {Object.entries(SOCIAL_PROFILES).map(([slug, profile]) => <article className={`social-hub-card social-hub-${slug}`} id={slug} key={slug}>
@@ -41,11 +43,11 @@ export default function SocialHubPage() {
           </article>)}
         </section>
         <section className="social-hub-cta" aria-labelledby="social-hub-explore">
-          <div><h2 id="social-hub-explore">Better systems.<br/>Stronger businesses.</h2><p>Consulting, analytics and business software from Lexedge Consulting and Vanteloq.</p></div>
+          <div><h2 id="social-hub-explore">Better systems.<br/>Stronger businesses.</h2><p>Business analytics and operational software from Vanteloq Inc.</p></div>
           <div className="social-hub-cta-actions"><Link className="social-hub-explore" href="/">Explore Vanteloq <span aria-hidden="true">↗︎</span></Link><Link href="/demo">Try the Interactive Demo <span aria-hidden="true">→</span></Link></div>
         </section>
       </main>
-      <footer className="social-hub-footer"><div><strong>Lexedge Consulting × Vanteloq</strong><p>Business clarity. Practical systems. Better decisions.</p></div><nav aria-label="Social page footer"><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/">Home</Link></nav></footer>
+      <footer className="social-hub-footer"><div><strong>Vanteloq Inc.</strong><p>Business clarity. Practical systems. Better decisions.</p></div><nav aria-label="Social page footer"><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/">Home</Link></nav></footer>
     </div>
-  </div>;
+  </PublicSurface>;
 }

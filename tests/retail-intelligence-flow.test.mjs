@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createEnvironment, createReportWorkspace, seedReportConnection, seedReportLocation, seedSalesAuthority, dispatch } from "./helpers/retail-worker-fixture.mjs";
+import { importPrivacyAcknowledgement } from "../domain/report-import-privacy.ts";
+import { ADVISOR_CONSENT_NOTICE_VERSION, PRIVACY_POLICY_VERSION } from "../domain/privacy-controls.ts";
+import { createEnvironment, createReportWorkspace, seedReportConnection, seedReportLocation, seedReportMetric, seedSalesAuthority, dispatch } from "./helpers/retail-worker-fixture.mjs";
 
 test("retail Worker enforces tenant/location/privacy boundaries, source approval, evidence CRUD and AI consent", async () => {
   const { worker, environment, database: db, dispose } = await createEnvironment();
@@ -19,6 +21,10 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
           .bind('parent-'+connectionId+date,identity.organizationId,connectionId,date,date+'T11:00:00',amount,run,now).run();
         await db.prepare("INSERT INTO commerce_sale_lines (id,organization_id,provider,connection_id,external_sale_id,external_line_id,product_ref,customer_ref,outlet_ref,sold_at,sku,product_name,quantity_milli,net_sales_cents,cost_cents,discount_cents,source_payload_hash,sync_run_id,updated_at) VALUES (?,?,'lightspeed-r',?,?,'1','product','customer-secret','shop',?,'SKU',?,1000,?,400,0,'hash',?,?)")
           .bind(connectionId + date, identity.organizationId, connectionId, date, date + "T11:00:00", name, amount, run, now).run();
+        // Publish the actual completed fictional sale totals through the current
+        // canonical cohort fixture. A bare approved connection is not publication
+        // proof, and an invented zero-sales day would conceal the missing evidence.
+        await seedReportMetric(db, { ...identity, businessDate: date, locationRef: "lightspeed-r:shop", netSalesCents: amount, sourceConnectionId: connectionId });
       }
       await db.prepare("INSERT INTO inventory_balances (id,organization_id,location_ref,sku,name,on_hand_quantity,reorder_point,source_provider,source_connection_id,updated_at,version) VALUES (?,?,'lightspeed-r:shop','SKU',?,20,3,'lightspeed-r',?,?,1)")
         .bind(crypto.randomUUID(), identity.organizationId, name, connectionId, now).run();
@@ -82,7 +88,7 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     assert.equal((await dispatch(worker, environment, query, other.owner)).status, 403);
     const route = "/api/v1/retail-measurements";
     const input = { action: "save", kind: "stock", from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId, provider: "lightspeed-r", connectionId: "real-retail", outletRef: "shop", source: "Reviewed stock ledger", reviewed: true, expectedVersion: null, csv: "reference,openingUnits,receivedUnits,openingValueCents,closingValueCents\nSKU,10,5,1000,600" };
-    const write = (changes = {}, identity = owner.owner) => dispatch(worker, environment, route, { ...identity, method: "POST", body: { ...input, ...changes } });
+    const write = (changes = {}, identity = owner.owner) => dispatch(worker, environment, route, { ...identity, method: "POST", body: { importPrivacyAcknowledgement: importPrivacyAcknowledgement(), ...input, ...changes } });
     assert.equal((await write({ connectionId: "other-retail" })).status, 403);
     assert.equal((await write({ connectionId: "test-retail" })).status, 403);
     assert.equal((await write({ reviewed: false })).status, 400);
@@ -113,7 +119,7 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
       if (String(request) === "https://api.openai.com/v1/responses") { prompts.push(JSON.parse(init.body).input); return new Response(JSON.stringify({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "Fixture retail analysis" }] }] }), { headers: { "content-type": "application/json" } }); }
       return originalFetch(request, init);
     };
-    const askBody = { question: "Explain the retail performance", provider: "openai", dataUseAccepted: true, noticeVersion: "vanteloq-ai-v9-personalization-context", privacyPolicyVersion: "2026-10-01", memoryEnabled: true, from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId };
+    const askBody = { question: "Explain the retail performance", provider: "openai", dataUseAccepted: true, noticeVersion: ADVISOR_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, memoryEnabled: true, from: "2026-09-11", to: "2026-09-11", locationId: owner.locationId };
     const ask = (changes = {}, identity = staff) => dispatch(worker, environment, "/api/v1/advisor/chat", { ...identity, method: "POST", body: { ...askBody, ...changes } });
     assert.equal((await ask({ dataUseAccepted: false })).status, 409); assert.equal(prompts.length, 0);
     response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...staff, method: "POST", body: { accepted: true, purpose: "analysis", noticeVersion: askBody.noticeVersion, privacyPolicyVersion: askBody.privacyPolicyVersion } });
@@ -127,7 +133,14 @@ test("retail Worker enforces tenant/location/privacy boundaries, source approval
     evidence = JSON.parse(prompts.at(-1).split("Evidence JSON: ")[1].split("\n\nConversation memory:")[0]);
     assert.equal(evidence.retail.status, "unavailable");
     assert.match(evidence.retail.reason, /overlap or a source is still syncing/);
+    assert.deepEqual(evidence.days, [], "period-specific unavailable evidence must not silently attach unrelated daily totals");
     assert.doesNotMatch(prompts.at(-1), /customer-secret|private@example|OTHER TENANT|PRIVATE TEST SECRET/);
+    // Without a requested retail period, daily-source authority fails closed
+    // before the AI provider receives any evidence from a syncing source.
+    const priorPromptCount = prompts.length;
+    response = await ask({ memoryEnabled: false, from: null, to: null }); assert.equal(response.status, 409, await response.clone().text());
+    assert.equal((await response.json()).error.code, "ADVISOR_SOURCE_CONFLICT");
+    assert.equal(prompts.length, priorPromptCount, "a syncing selected source must fail before sending evidence to AI");
     await db.prepare("UPDATE integration_connections SET sync_lease_owner=NULL,sync_lease_expires_at=NULL WHERE id='real-retail'").run();
     response = await dispatch(worker, environment, "/api/v1/advisor/consent", { ...staff, method: "POST", body: { accepted: true, purpose: "help", noticeVersion: askBody.noticeVersion, privacyPolicyVersion: askBody.privacyPolicyVersion } });
     assert.equal(response.status, 200, await response.clone().text());

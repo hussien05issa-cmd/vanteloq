@@ -1,0 +1,179 @@
+/* One quiet reading column. Native details retain keyboard and touch behaviour. */
+.public-site.reference-home .journey-faq {
+  --faq-panel: #ffffff;
+  --faq-line: #d7e0ec;
+  --faq-ink: #14223b;
+  --faq-secondary: #53647b;
+  --faq-link: #175abd;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(28px, 4.5vw, 60px);
+  align-items: start;
+}
+
+.public-site.reference-home[data-public-theme="dark"] .journey-faq {
+  --faq-panel: var(--public-panel);
+  --faq-line: var(--public-line);
+  --faq-ink: var(--public-ink);
+  --faq-secondary: var(--public-secondary);
+  --faq-link: var(--public-link);
+}
+
+.public-site.reference-home .journey-faq :is(.home-faq-intro, .home-faq-list) {
+  min-width: 0;
+  width: 100%;
+  max-width: 960px;
+  margin-inline: auto;
+}
+
+.public-site.reference-home .journey-faq .home-faq-intro {
+  display: grid;
+  gap: 30px;
+}
+
+.public-site.reference-home .journey-faq .home-faq-list {
+  display: grid;
+  gap: 12px;
+  margin-block: 0;
+  border: 0;
+}
+
+.public-site.reference-home .journey-faq .home-faq-list > details {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  border: 1px solid var(--faq-line);
+  border-radius: 16px;
+  background: var(--faq-panel);
+  color: var(--faq-ink);
+  transition: border-color 160ms ease;
+}
+
+.public-site.reference-home .journey-faq .home-faq-list summary {
+  position: relative;
+  display: block;
+  min-height: 64px;
+  padding: 20px 58px 20px 22px;
+  border-radius: 15px;
+  color: var(--faq-ink);
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  cursor: pointer;
+  list-style: none;
+}
+
+.public-site.reference-home .journey-faq .home-faq-list summary::after {
+  position: absolute;
+  top: 50%;
+  right: 20px;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--faq-link);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+  transform: translateY(-50%);
+}
+
+.public-site.reference-home .journey-faq .home-faq-list details[open] {
+  border-color: var(--faq-link);
+}
+
+.public-site.reference-home .journey-faq .home-faq-list details > p {
+  max-width: none;
+  margin: 0;
+  padding: 0 22px 22px;
+  color: var(--faq-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+.public-site.reference-home .journey-faq .home-faq-list details > a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: -6px 22px 16px;
+  color: var(--faq-link);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  text-underline-offset: 4px;
+}
+
+.public-site.reference-home .journey-faq .journey-final {
+  gap: 12px;
+  margin: 4px 0 0;
+  padding: 24px;
+  border: 1px solid var(--faq-line);
+  border-radius: 18px;
+  background: var(--faq-panel);
+}
+
+.public-site.reference-home .journey-faq .journey-final > strong {
+  color: var(--faq-ink);
+  font-size: 20px;
+  line-height: 1.4;
+  letter-spacing: -.02em;
+}
+
+.public-site.reference-home .journey-faq :is(summary, a, button):focus-visible {
+  outline: 3px solid var(--faq-link);
+  outline-offset: 4px;
+}
+
+@media (max-width: 800px) {
+  .public-site.reference-home .journey-faq {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .public-site.reference-home .journey-faq .home-faq-intro {
+    gap: 22px;
+  }
+}
+
+@media (max-width: 480px) {
+  .public-site.reference-home .journey-faq .journey-final {
+    padding: 20px;
+  }
+
+  .public-site.reference-home .journey-faq .home-faq-list summary {
+    padding: 19px 52px 19px 18px;
+    font-size: 15px;
+  }
+
+  .public-site.reference-home .journey-faq .home-faq-list summary::after {
+    right: 17px;
+  }
+
+  .public-site.reference-home .journey-faq .home-faq-list details > p {
+    padding-inline: 18px;
+    font-size: 14px;
+  }
+
+  .public-site.reference-home .journey-faq .home-faq-list details > a {
+    margin-inline: 18px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .public-site.reference-home .journey-faq .home-faq-list > details {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .public-site.reference-home[data-public-theme] .journey-faq {
+    --faq-panel: Canvas;
+    --faq-line: CanvasText;
+    --faq-ink: CanvasText;
+    --faq-secondary: CanvasText;
+    --faq-link: LinkText;
+  }
+}

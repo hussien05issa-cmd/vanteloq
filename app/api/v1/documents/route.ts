@@ -21,6 +21,7 @@ import { requireOrganizationWideLocationAccess } from "../../../../server/locati
 
 import { safeName, verifiedType, quarantineDocument } from "../../../../server/document-ingest";
 import { documentEmailConfigured } from "../../../../server/document-email";
+import { requireMultipartImportPrivacyAcknowledgement, reportImportPrivacyAuditDetails } from "../../../../server/report-import-privacy";
 
 const users = ["owner", "admin", "manager", "employee", "read_only"] as const;
 const maximumBytes = 10 * 1024 * 1024;
@@ -139,6 +140,7 @@ export async function POST(request: Request) {
     } catch {
       throw new ApiError(400, "INVALID_MULTIPART", "The document upload could not be read. Choose the file and try again.");
     }
+    const acknowledgement = requireMultipartImportPrivacyAcknowledgement(form);
     const file = form.get("file");
     if (!(file instanceof File) || file.size <= 0 || file.size > maximumBytes)
       throw new ApiError(400, "INVALID_FILE", "Choose a document up to 10 MB.");
@@ -173,6 +175,7 @@ export async function POST(request: Request) {
         contentType: verified.type,
         sizeBytes: file.size,
         extractionStatus: "not_configured",
+        ...reportImportPrivacyAuditDetails(acknowledgement),
       },
     });
     return jsonResponse({ ...(canViewDocuments ? await list(context.organizationId) : {}), uploadedId: id }, { status: 201 });

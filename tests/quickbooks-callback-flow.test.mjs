@@ -6,6 +6,7 @@ import { Miniflare } from "miniflare";
 import { registerSupabaseTestServer } from "./helpers/supabase-loopback-transport.mjs";
 import { TERMS_OF_SERVICE_VERSION, PRIVACY_POLICY_VERSION, ACCOUNT_ACCEPTANCE_NOTICE_VERSION } from "../shared/legal-versions.ts";
 import { providerPrivacyAcceptance } from "../domain/provider-privacy.ts";
+import { QUICKBOOKS_CONSENT_NOTICE_VERSION } from "../domain/privacy-controls.ts";
 
 const origin = "https://vanteloq.example";
 const email = "quickbooks-owner@example.invalid";
@@ -62,7 +63,7 @@ test("QuickBooks callback retains verified initiation MFA and rechecks the actor
       VALUES ('test-founder',?,?,'founder','MFA callback regression',1,1,?,?,?)`).bind(actor.id, organizationId, actor.id, Date.now(), Date.now()).run();
     const authorize = async (aal = "aal2", includeProviderPrivacy = true) => worker.fetch(new Request(`${origin}/api/v1/integrations/quickbooks/authorize`, {
       method: "POST", headers: headers(aal), body: JSON.stringify({ ...(includeProviderPrivacy ? providerPrivacyAcceptance(true) : {}), consentAcknowledged: true,
-        noticeVersion: "quickbooks-accounting-read-v1", privacyPolicyVersion: "2026-10-01", initiatorAssuranceLevel: "aal2" }),
+        noticeVersion: QUICKBOOKS_CONSENT_NOTICE_VERSION, privacyPolicyVersion: PRIVACY_POLICY_VERSION, initiatorAssuranceLevel: "aal2" }),
     }), env, context);
     const weak = await authorize("aal1");
     assert.equal(weak.status, 403);

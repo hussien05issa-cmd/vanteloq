@@ -21,10 +21,13 @@ async function fetchText(path) {
 test("homepage exposes the marketing page in initial HTML", async () => {
   const { response, text } = await fetchText("/");
   assert.equal(response.status, 200);
-  assert.match(text, /<h1 id="home-title">A number without a source <em>is a rumour\.<\/em><\/h1>/);
+  assert.match(text, /<h1 id="home-title">Your business, <em>at a glance\.<\/em><\/h1>/);
+  const principle = "A number without a source is a rumour.";
+  assert.ok(text.includes(principle));
+  assert.ok(text.indexOf(principle) < text.indexOf('<h1 id="home-title">'));
   assert.doesNotMatch(text, />Preparing Vanteloq…</);
   assert.equal((text.match(/<h1\b/g) ?? []).length, 1);
-  assert.match(text, /Business Analytics for Independent Retail/);
+  assert.doesNotMatch(text, /Retail\. Dealerships\. Cafés\. Restaurants\./);
   assert.match(text, /Lightspeed Retail R-Series/);
   for (const slug of [
     "how-to-track-inventory-small-business",
@@ -48,7 +51,7 @@ test("resource index is server rendered with distinct metadata", async () => {
   assert.match(text, /<title>Small Business Operations Resources \| Vanteloq<\/title>/);
   assert.match(text, /href="https:\/\/vanteloq\.com\/resources"/);
   assert.match(text, /How to Track Inventory for a Small Business/);
-  assert.match(text, /vanteloq-command-ledger\.webp/);
+  assert.match(text, /glass-2026-10-12\/command-ledger\.svg/);
   assert.ok(text.includes('<details class="resource-article-browser">'), "Articles should be collapsed in the initial HTML");
   assert.ok(text.includes('href="/resources/how-to-calculate-gross-margin-small-business"'));
   assert.ok(text.includes("min read"));
@@ -88,7 +91,7 @@ test("new analytics and bookkeeping guides render their metadata, heroes, and sc
     {
       path: "/resources/data-analytics-for-small-business",
       title: "Data Analytics for Small Business: A Practical Guide",
-      hero: "vanteloq-command-ledger.webp",
+      hero: "glass-2026-10-12/command-ledger.svg",
       alt: "Vanteloq command centre showing sales, margin, cash, inventory, purchasing and accountable business decisions in one operating view.",
     },
     {
@@ -105,7 +108,10 @@ test("new analytics and bookkeeping guides render their metadata, heroes, and sc
     assert.match(text, new RegExp(`<h1>${guide.title}<\\/h1>`));
     assert.ok(text.includes(guide.hero), `${guide.path} should render its editorial hero`);
     assert.ok(text.includes(guide.alt), `${guide.path} should render descriptive hero text`);
-    assert.match(text, new RegExp(`"image":"https://vanteloq\\.com/brand/${guide.hero.replace(".", "\\.")}"`));
+    const schema = [...text.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map(match => JSON.parse(match[1])).find(item => item["@type"] === "Article");
+    const searchImage = guide.hero.endsWith(".svg") ? "glass-2026-10-12/vanteloq.jpg" : guide.hero;
+    assert.equal(schema.image.url, `https://vanteloq.com/brand/${searchImage}`);
+    assert.ok(schema.image.width >= 1200);
     const sectionIds = [...text.matchAll(/<section id="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(sectionIds).size, sectionIds.length, `${guide.path} section ids should be unique`);
     assert.doesNotMatch(text, /\u2014/u);

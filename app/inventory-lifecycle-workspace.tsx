@@ -38,7 +38,8 @@ type Lot = {
     evidence: string[];
   };
 };
-type Payload = {
+type DatasetCoverage = { status: "complete" | "partial"; loadedCount: number; matchingCountAtLeast: number };
+export type InventoryLifecyclePayload = {
   posBalances: {
     locationRef: string;
     sku: string;
@@ -50,19 +51,20 @@ type Payload = {
   lots: Lot[];
   fefo: (Lot & { fefoRank: number })[];
   summary: {
-    totalLots: number;
-    trackedLots: number;
-    totalUnits: number;
-    costAtRiskCents: number;
-    costRiskKnownLots: number;
-    riskCounts: Record<Risk, number>;
-    posSkus: number;
-    posUnits: number;
-    lowStockSkus: number;
+    totalLots: number | null;
+    trackedLots: number | null;
+    totalUnits: number | null;
+    costAtRiskCents: number | null;
+    costRiskKnownLots: number | null;
+    riskCounts: Record<Risk, number> | null;
+    posSkus: number | null;
+    posUnits: number | null;
+    lowStockSkus: number | null;
   };
-  source: { calculation: string; generatedAt: string };
+  source: { calculation: string; generatedAt: string; coverage?: { status: "complete" | "partial"; limit: number; reason: string | null; lots: DatasetCoverage; posBalances: DatasetCoverage } };
   locationScope: { id: string; name: string } | null;
 };
+type Payload = InventoryLifecyclePayload;
 type TaskSeed = {
   title: string;
   detail: string;
@@ -118,6 +120,39 @@ function message(body: unknown, fallback: string) {
     if (typeof value === "string") return value;
   }
   return fallback;
+}
+
+function aggregate(value: number | null | undefined, coverage?: DatasetCoverage) {
+  return coverage?.status === "partial" || value === null || value === undefined || !Number.isFinite(value) ? "Not determined" : value;
+}
+
+export function InventoryLifecycleSummary({ data }: { data: Pick<Payload, "summary" | "source"> }) {
+  return <div className="lifecycle-summary">
+    <article><small>POS SKUS</small><b>{aggregate(data.summary.posSkus, data.source.coverage?.posBalances)}</b></article>
+    <article><small>POS UNITS ON HAND</small><b>{aggregate(data.summary.posUnits, data.source.coverage?.posBalances)}</b></article>
+    <article><small>AT OR BELOW REORDER</small><b>{aggregate(data.summary.lowStockSkus, data.source.coverage?.posBalances)}</b></article>
+    <article><small>LOT RECORDS</small><b>{aggregate(data.summary.totalLots, data.source.coverage?.lots)}</b></article>
+  </div>;
+}
+
+export function InventoryLifecycleCoverageWarning({ source }: { source: Payload["source"] }) {
+  const coverage = source.coverage;
+  if (!coverage || coverage.status !== "partial" && coverage.lots.status !== "partial" && coverage.posBalances.status !== "partial") return null;
+  return <div className="workspace-scope-banner lifecycle-coverage-warning" role="status"><b>Incomplete inventory source coverage</b><span>{source.calculation}</span><span>Totals for an incomplete dataset are not determined. Individual loaded records remain available to review.</span></div>;
+}
+
+export function InventoryLifecyclePosSkuCount({ data }: { data: Pick<Payload, "summary" | "source"> }) {
+  const value = aggregate(data.summary.posSkus, data.source.coverage?.posBalances);
+  return <strong>{typeof value === "number" ? `${value} SKUs` : "SKU total not determined"}</strong>;
+}
+
+export function InventoryLifecycleLotEmpty({ coverage }: { coverage?: DatasetCoverage }) {
+  return <div className="lifecycle-state"><b>{coverage?.status === "partial" ? "No matching lots in the loaded records" : "No inventory lots in this view"}</b><span>{coverage?.status === "partial" ? "Only part of the selected inventory is loaded. Complete source coverage before treating this view as an empty inventory or choosing a lot to pick." : "Add a lot or change the risk filter. No sample inventory is shown."}</span></div>;
+}
+
+export function InventoryLifecycleFefo({ lots, coverage }: { lots: Payload["fefo"]; coverage?: DatasetCoverage }) {
+  const partial = coverage?.status === "partial";
+  return <aside className="card fefo-panel"><p>FEFO PICK GUIDANCE</p><h3>Earliest shelf-life date first</h3><span>This is operational guidance, not an automatic stock adjustment.</span>{partial ? <div className="lifecycle-state"><b>Pick order not determined</b><span>The lot selection is incomplete. Review complete lot coverage before choosing the earliest shelf-life date.</span></div> : lots.length === 0 ? <div className="lifecycle-state"><span>No active lot is available to rank.</span></div> : lots.slice(0, 6).map(lot => <div key={lot.id}><i>{lot.fefoRank}</i><span><b>{lot.productName}</b><small>{lot.sku} · {lot.locationRef}</small></span><strong>{lot.assessment.trackedDate ?? "No date"}</strong></div>)}</aside>;
 }
 
 export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, activeLocationId }: Props) {
@@ -210,14 +245,10 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, 
     </header>
     {loading ? <WorkspaceSkeleton label="Loading inventory lots"/> : error && !data ? <div className="card lifecycle-state"><b>Inventory lifecycle unavailable</b><span>{error}</span><button onClick={() => void load()}>Retry</button></div> : data ? <>
       {data.locationScope ? <div className="workspace-scope-banner"><b>{data.locationScope.name}</b><span>Inventory lots, POS balances, shelf-life risk and sale velocity are limited to this mapped location.</span></div> : null}
-      <div className="lifecycle-summary">
-        <article><small>POS SKUS</small><b>{data.summary.posSkus}</b></article>
-        <article><small>POS UNITS ON HAND</small><b>{data.summary.posUnits}</b></article>
-        <article><small>AT OR BELOW REORDER</small><b>{data.summary.lowStockSkus}</b></article>
-        <article><small>LOT RECORDS</small><b>{data.summary.totalLots}</b></article>
-      </div>
+      <InventoryLifecycleCoverageWarning source={data.source}/>
+      <InventoryLifecycleSummary data={data}/>
       {data.posBalances.length > 0 ? <article className="card pos-stock-ledger">
-        <header><div><p>CONNECTED POS INVENTORY</p><h3>Current normalized stock balances</h3><span>Read-only quantities imported by location. Reorder points are copied from the connected source when present.</span></div><strong>{data.summary.posSkus} SKUs</strong></header>
+        <header><div><p>CONNECTED POS INVENTORY</p><h3>Current normalized stock balances</h3><span>Read-only quantities imported by location. Reorder points are copied from the connected source when present.</span></div><InventoryLifecyclePosSkuCount data={data}/></header>
         <div className="pos-stock-head"><span>Product</span><span>Location</span><span>On hand</span><span>Reorder point</span></div>
         {data.posBalances.slice(0, 100).map(balance => <div className="pos-stock-row" key={`${balance.locationRef}:${balance.sku}`}>
           <span><b>{balance.name}</b><small>{balance.sku}</small></span>
@@ -230,7 +261,7 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, 
         <article className="card lot-ledger">
           <header><div><h3>Lot risk ledger</h3><span>{data.source.calculation}</span></div><select value={filter} onChange={event => setFilter(event.target.value as Risk | "all")}><option value="all">All risk states</option><option value="urgent">Urgent</option><option value="expired">Expired</option><option value="at_risk">At risk</option><option value="monitor">Monitor</option><option value="healthy">Healthy</option><option value="untracked">Date untracked</option></select></header>
           <div className="lot-table-head"><span>Product / lot</span><span>Quantity</span><span>Shelf-life</span><span>Forecast</span><span>Risk</span></div>
-          {visible.length === 0 ? <div className="lifecycle-state"><b>No inventory lots in this view</b><span>Add a lot or change the risk filter. No sample inventory is shown.</span></div> : visible.map(lot => <button className="lot-row" key={lot.id} onClick={() => open(lot)}>
+          {visible.length === 0 ? <InventoryLifecycleLotEmpty coverage={data.source.coverage?.lots}/> : visible.map(lot => <button className="lot-row" key={lot.id} onClick={() => open(lot)}>
             <span><b>{lot.productName}</b><small>{lot.sku} · {lot.locationRef} · {lot.lotNumber || lot.batchNumber || "No lot identifier"}</small></span>
             <span><b>{lot.quantityRemaining}</b><small>{lot.status}</small></span>
             <span><b>{lot.assessment.daysRemaining === null ? "Unavailable" : `${lot.assessment.daysRemaining} days`}</b><small>{lot.assessment.trackedDate ?? "No date recorded"}</small></span>
@@ -238,7 +269,7 @@ export function InventoryLifecycleWorkspace({ currency, showNotice, createTask, 
             <span><em className={`lot-risk ${lot.assessment.risk}`}>{lot.assessment.risk.replace("_", " ")}</em><small>{money(lot.assessment.inventoryCostAtRiskCents, currency)} cost risk</small></span>
           </button>)}
         </article>
-        <aside className="card fefo-panel"><p>FEFO PICK GUIDANCE</p><h3>Earliest shelf-life date first</h3><span>This is operational guidance, not an automatic stock adjustment.</span>{data.fefo.length === 0 ? <div className="lifecycle-state"><span>No active lot is available to rank.</span></div> : data.fefo.slice(0, 6).map(lot => <div key={lot.id}><i>{lot.fefoRank}</i><span><b>{lot.productName}</b><small>{lot.sku} · {lot.locationRef}</small></span><strong>{lot.assessment.trackedDate ?? "No date"}</strong></div>)}</aside>
+        <InventoryLifecycleFefo lots={data.fefo} coverage={data.source.coverage?.lots}/>
       </div>
       {error ? <p className="form-error">{error}</p> : null}
     </> : null}

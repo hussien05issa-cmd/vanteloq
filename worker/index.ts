@@ -2,6 +2,7 @@
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
 import { isTrustedTlsEdgeProxy, rejectLegacyTls } from "../server/transport-security";
+import { authEntryRobots } from "../server/public-indexing";
 
 interface Env {
   POS_SYNC_SECRET?: string;
@@ -134,10 +135,12 @@ const worker = {
     headers.delete("Server");
     headers.delete("X-Powered-By");
     headers.set("X-Content-Type-Options", "nosniff");
-    headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
-    headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+    headers.set("Referrer-Policy", url.pathname === "/datstudio" || url.pathname.startsWith("/datstudio/") ? "no-referrer" : "strict-origin-when-cross-origin");
+    headers.set("Permissions-Policy", "camera=(), microphone=(self), geolocation=(), payment=(), usb=()");
     headers.set("X-Frame-Options", "DENY");
     headers.set("X-DNS-Prefetch-Control", "off");
+    const authRobots = authEntryRobots(url);
+    if (authRobots) headers.set("X-Robots-Tag", authRobots);
     headers.set(
       "Content-Security-Policy",
       "default-src 'self'; script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.plaid.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://www.google-analytics.com https://region1.google-analytics.com; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://challenges.cloudflare.com https://api.pwnedpasswords.com https://*.plaid.com https://www.google-analytics.com https://region1.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com; object-src 'none'; frame-src https://challenges.cloudflare.com https://*.plaid.com https://cdn.plaid.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests",

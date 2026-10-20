@@ -5,7 +5,7 @@ import { applyIndustryKpis, industryKpiRecommendation } from "../domain/industry
 
 test("industry recommendations use existing source-aware dashboard metrics", () => {
   const retail = industryKpiRecommendation("Retail");
-  assert.equal(retail.industry, "Retail");
+  assert.equal(retail.industry, "General retail");
   assert.deepEqual(retail.recommended.slice(0, 4).map(item => item.key), ["net_revenue", "gross_profit", "gross_margin", "inventory_value"]);
   assert.ok(retail.nextMeasures.some(item => item.name === "Inventory Turnover"));
 

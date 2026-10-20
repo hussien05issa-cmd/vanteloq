@@ -11,6 +11,7 @@
 .operating-shell {
   --font-product: "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --font-geist-sans: var(--font-product);
+  --font-geist-mono: var(--font-product);
 }
 
 body,

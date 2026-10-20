@@ -2,7 +2,7 @@
 
 import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { getSupabase, signOut } from "./supabase-browser";
-import { FieldLabel, FormLegend } from "./form-primitives";
+import { FieldLabel, FormInput, FormLegend } from "./form-primitives";
 import ProductBrandLogo from "./product-brand-logo";
 
 type GateState = "checking" | "enroll_required" | "challenge_required" | "ready" | "error";
@@ -143,36 +143,37 @@ export default function AccountMfaGate({ children }: { children: ReactNode }) {
   if (state === "ready") return children;
 
   return <main className="founder-mfa-gate">
-    <section>
-      <header><ProductBrandLogo product="vanteloq" priority/><span><b>Vanteloq account</b><small>Two-step verification</small></span></header>
-      {state === "checking" && <div className="founder-mfa-copy"><h1>Preparing secure sign-in…</h1><p>One moment while we finish protecting your account.</p></div>}
+    <section aria-labelledby="mfa-title" aria-describedby="mfa-description" aria-busy={state === "checking" || busy}>
+      <header><ProductBrandLogo product="vanteloq" priority/></header>
+      <small className="auth-eyebrow">Two-step verification</small>
+      {state === "checking" && <div className="founder-mfa-copy" role="status"><h1 id="mfa-title">Preparing secure sign-in…</h1><p id="mfa-description">One moment while we finish protecting your account.</p></div>}
       {state === "enroll_required" && <div className="founder-mfa-enroll">
         <div>
-          <h1>Set up two-step verification.</h1>
-          <p>Scan the QR code with your authenticator app, then enter the six-digit code it provides. Keep this page open until setup is complete.</p>
+          <h1 id="mfa-title">Set up two-step verification</h1>
+          <p id="mfa-description">Scan the QR code with your authenticator app, then enter the six-digit code it provides. Keep this page open until setup is complete.</p>
           <details><summary>Use a setup key instead</summary><code>{manualSecret}</code></details>
         </div>
         <div>
           {/* A provider-generated data URI cannot be optimized by next/image. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           {qrCode && <img src={qrCode} width={190} height={190} alt="Authenticator enrollment QR code"/>}
-          <form className="founder-mfa-form" onSubmit={verify}>
-            <FormLegend/><label><FieldLabel>Verification Code</FieldLabel><input value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
-            <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Enable two-factor authentication"}</button>
+          <form className="founder-mfa-form" onSubmit={verify} aria-busy={busy}>
+            <FormLegend/><label><FieldLabel>Verification code</FieldLabel><FormInput id="mfa-code" aria-describedby={message ? "mfa-feedback mfa-description" : "mfa-description"} aria-invalid={message ? true : undefined} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" title="Enter the current six-digit code from your authenticator app." minLength={6} maxLength={6} required/></label>
+            <button type="submit" disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Enable two-factor authentication"}</button>
           </form>
         </div>
       </div>}
       {state === "challenge_required" && <div className="founder-mfa-copy">
-        <h1>Verify it&apos;s you.</h1>
-        <p>Enter the current six-digit code from your authenticator app to continue.</p>
-        <form className="founder-mfa-form" onSubmit={verify}>
-          <FormLegend/><label><FieldLabel>Verification Code</FieldLabel><input autoFocus value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required/></label>
-          <button disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and continue"}</button>
+        <h1 id="mfa-title">Verify it&apos;s you</h1>
+        <p id="mfa-description">Enter the current six-digit code from your authenticator app to continue.</p>
+        <form className="founder-mfa-form" onSubmit={verify} aria-busy={busy}>
+          <FormLegend/><label><FieldLabel>Verification code</FieldLabel><FormInput id="mfa-code" aria-describedby={message ? "mfa-feedback mfa-description" : "mfa-description"} aria-invalid={message ? true : undefined} autoFocus value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" title="Enter the current six-digit code from your authenticator app." minLength={6} maxLength={6} required/></label>
+          <button type="submit" disabled={busy || code.length !== 6}>{busy ? "Verifying…" : "Verify and continue"}</button>
         </form>
       </div>}
-      {state === "error" && <div className="founder-mfa-copy"><h1>We couldn&apos;t finish verification.</h1><p>{message || "Sign out safely and try again."}</p></div>}
-      {message && state !== "error" && <p className="founder-mfa-message" role="alert">{message}</p>}
-      <footer><button onClick={() => void signOut()}>Sign out</button></footer>
+      {state === "error" && <div className="founder-mfa-copy" role="alert"><h1 id="mfa-title">We couldn&apos;t finish verification</h1><p id="mfa-description">{message || "Sign out safely and try again."}</p></div>}
+      {message && state !== "error" && <p id="mfa-feedback" className="founder-mfa-message" role="alert">{message}</p>}
+      <footer><button type="button" onClick={() => void signOut()}>Sign out</button></footer>
     </section>
   </main>;
 }

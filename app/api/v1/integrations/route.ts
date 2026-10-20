@@ -29,7 +29,8 @@ import { aggregateConnectionStatus } from "../../../../domain/integration-source
 import { requireOrganizationWideLocationAccess } from "../../../../server/location-access";
 import { buildProviderReportCatalog } from "../../../../domain/provider-report-contracts";
 import { integrationProviderFeature } from "../../../../domain/paid-feature-routing";
-import { requireFeature } from "../../../../server/entitlements/engine";
+import { getTenantEntitlements } from "../../../../server/entitlements/engine";
+import { freeIntegrationAllowance, reserveIntegrationSelection, requireIntegrationProviderAccess } from "../../../../server/integrations/free-selection";
 import { noActiveIntegrationLease } from "../../../../server/integrations/trusted-data";
 
 import { loadSyncSchedules } from "../../../../server/integrations/sync-status";
@@ -46,6 +47,8 @@ export async function GET(request: Request) {
     await requirePermission(context, "integrations.view");
     await requireOrganizationWideLocationAccess(context);
     const permissions = await effectivePermissions(context);
+    const freeAccess = (await getTenantEntitlements(context)).accessType === "free";
+    const freeAllowance = freeAccess ? await freeIntegrationAllowance(context.organizationId) : null;
     const previewAccess = Boolean(await getInternalAccessGrant(context));
     const scheduleStatus = await loadSyncSchedules(context.organizationId, context.role === "owner");
     const rows = await getDb()
@@ -146,6 +149,7 @@ export async function GET(request: Request) {
     const syncEnabled = activeRows.some((row) => row.status === "connected");
     const dataPromotionEnabled = activeRows.some((row) => row.dataPromotionStatus === "approved");
     return jsonResponse({
+      freeAllowance,
       preSyncControls,
       syncEnabled,
       dataPromotionEnabled,
@@ -204,6 +208,8 @@ export async function GET(request: Request) {
               : null;
         const result = {
         ...provider,
+        pendingRemovalConnectionIds: provider.id === "slack" ? allProviderConnections.filter(connection => connection.status === "revoked" && connection.lastErrorCode === "SLACK_PROVIDER_REMOVAL_REQUIRED").map(connection => connection.id) : [],
+        cleanupRequired: provider.id === "plaid" && allProviderConnections.some(connection => connection.sourceNamespace?.startsWith("cleanup:") && connection.lastErrorCode === "PLAID_PROVISIONING_CLEANUP_REQUIRED"),
         canManage: canManageProvider,
         status: providerConnections.length
           ? aggregate.status
@@ -278,6 +284,8 @@ export async function GET(request: Request) {
           .filter((value): value is Date => Boolean(value))
           .sort((left, right) => right.getTime() - left.getTime())[0]?.toISOString() ?? null,
         providerReadiness,
+        freeSelected: freeAllowance?.selectedProviders.includes(provider.id) ?? false,
+        freeEligible: freeAccess && Boolean(freeAllowance && (freeAllowance.selectedProviders.includes(provider.id) || freeAllowance.used < freeAllowance.limit)),
         customerAvailability: customerIntegrationAvailability({ ...provider, providerReadiness }, previewAccess),
         canonicalCoverage,
         featureCoverage: buildProviderFeatureCoverageByConnection(provider.id, providerConnections.map(connection => ({ connectionId: connection.id, coverage: coverageByConnection.get(connection.id) ?? emptyCoverage() }))),
@@ -297,12 +305,18 @@ export async function POST(request: Request) {
       throw new ApiError(403, "PERMISSION_DENIED", "This account cannot approve integration data.");
     }
     const body = await request.json().catch(() => ({})) as {
+      provider?: unknown;
       action?: unknown;
       connectionId?: unknown;
       confirmed?: unknown;
       sampleRunId?: unknown;
       expectedSelectionVersion?: unknown;
     };
+    if (body.action === "select_provider" && typeof body.provider === "string" && (await getTenantEntitlements(context)).accessType === "free") {
+      await requirePermission(context,"integrations.manage");
+      await reserveIntegrationSelection(context,body.provider);
+      return jsonResponse({selected:true});
+    }
     if (!["approve_data", "exclude_data"].includes(String(body.action)) || typeof body.connectionId !== "string" || body.confirmed !== true) {
       throw new ApiError(400, "INVALID_PROMOTION_REQUEST", "Confirm the reviewed provider account before making its data available.");
     }
@@ -315,7 +329,7 @@ export async function POST(request: Request) {
     }
     const requiredFeature = integrationProviderFeature(connection.provider);
     if (!requiredFeature) throw new ApiError(400, "INTEGRATION_PROVIDER_UNAVAILABLE", "This provider does not have an enabled subscription feature.");
-    await requireFeature(context, requiredFeature);
+    await requireIntegrationProviderAccess(context, connection.provider, connection.id);
     if (connection.provider === "plaid") {
       await requirePermission(context, "finance.connections");
     } else {

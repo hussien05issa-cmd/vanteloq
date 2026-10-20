@@ -10,8 +10,8 @@ import ProductDemo from "../app/product-demo";
 test("signup preserves unchecked legal acceptance and distinguishes required fields", () => {
   const html = renderToStaticMarkup(<AuthPanel initialMode="signup" close={() => {}} authenticated={() => {}}/>);
   assert.match(html,/Required fields/);
-  assert.match(html,/Full Name/);
-  assert.match(html,/Email Address/);
+  assert.match(html,/aria-label="Full name"/);
+  assert.match(html,/aria-label="Email address"/);
   assert.match(html,/class="required-mark" aria-hidden="true"/);
   const checkbox = html.match(/<input[^>]*type="checkbox"[^>]*>/)?.[0];
   assert.ok(checkbox);

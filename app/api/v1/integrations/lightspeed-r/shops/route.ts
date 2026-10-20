@@ -2,7 +2,7 @@ import { and, desc, eq, isNotNull, or } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import { integrationConnections, integrationLocationMappings, integrationSyncRuns, organizationLocations } from "../../../../../../db/schema";
 import { recordAudit } from "../../../../../../server/audit";
-import { requireAccess } from "../../../../../../server/authorization";
+import { requireIntegrationAccess } from "../../../../../../server/integrations/free-selection";
 import { ApiError, enforceRateLimit, handleApi, jsonResponse, readJsonObject, requireSameOrigin } from "../../../../../../server/api";
 import { fetchLightspeedRCollection, LIGHTSPEED_R_PROVIDER } from "../../../../../../server/integrations/lightspeed-r";
 import {
@@ -71,7 +71,7 @@ async function revokePublicationAuthorization(
 
 export async function GET(request: Request) {
   return handleApi(request, async () => {
-    const context = await requireAccess(request, ["owner", "admin", "manager"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, ["owner", "admin", "manager"], "lightspeed-r", false);
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit("lightspeed-r:shops:list", context.userId, 120, 3600);
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     requireSameOrigin(request);
     const input = await readJsonObject(request);
     const discovering = input.action === "discover";
-    const context = await requireAccess(request, discovering ? ["owner", "admin", "manager"] : ["owner", "admin"], "pos.reporting.core");
+    const context = await requireIntegrationAccess(request, discovering ? ["owner", "admin", "manager"] : ["owner", "admin"], "lightspeed-r", false);
     await requirePermission(context, "integrations.manage");
     await requireOrganizationWideLocationAccess(context);
     await enforceRateLimit(discovering ? "lightspeed-r:shop-discover" : "lightspeed-r:shop-map", context.userId, discovering ? 20 : 60, 3600);

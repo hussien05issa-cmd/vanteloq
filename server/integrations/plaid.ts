@@ -142,11 +142,18 @@ async function plaidRequest<T>(path: string, payload: Record<string, unknown>, f
     method: "POST",
     headers: { "Content-Type": "application/json", "Plaid-Version": "2020-09-14" },
     body: JSON.stringify({ client_id: config.clientId, secret: config.secret, ...payload }),
+    redirect: "manual",
     signal: AbortSignal.timeout(20_000),
   });
-  const body = await response.json() as T & { error_code?: string; error_message?: string };
+  if (response.status >= 300 && response.status < 400) throw new ApiError(502, "PLAID_REDIRECT_REJECTED", "The bank service redirected this request. Please try again from Integrations.");
+  if (response.status === 429) throw new ApiError(503, "PLAID_RATE_LIMITED", "The bank service is busy. Wait before trying again.");
+  let body: T & { error_code?: string; error_message?: string };
+  try { body = await response.json(); }
+  catch { throw new ApiError(502, "PLAID_RESPONSE_INVALID", "The bank service returned an unreadable response. Please try again."); }
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw new ApiError(502, "PLAID_RESPONSE_INVALID", "The bank service returned an unreadable response. Please try again.");
   if (!response.ok || body.error_code) {
-    throw new ApiError(response.status >= 500 ? 502 : 409, body.error_code || "PLAID_REQUEST_FAILED", body.error_message || "Plaid could not complete the request.");
+    const code = typeof body.error_code === "string" && /^[A-Z][A-Z0-9_]{1,79}$/.test(body.error_code) ? body.error_code : "PLAID_REQUEST_FAILED";
+    throw new ApiError(response.status >= 500 ? 502 : 409, code, plaidRequiresUserRepair(code) ? "Your bank connection needs attention. Reconnect it from Integrations." : "The bank service could not complete the request. Please try again.");
   }
   return body;
 }
@@ -204,7 +211,7 @@ export function normalizePlaidTransaction(input: PlaidTransactionInput) {
     description: (input.merchant_name || input.name || "Bank transaction").slice(0, 500),
     originalDescription: (input.name || "Bank transaction").slice(0, 500),
     amountCents: Math.round(input.amount * -100),
-    currency: (input.iso_currency_code || input.unofficial_currency_code || "CAD").slice(0, 3).toUpperCase(),
+    currency: (/^[A-Z]{3}$/i.test(input.iso_currency_code??"") ? input.iso_currency_code! : "UNK").toUpperCase(),
     sourceState: input.pending ? "pending" as const : "posted" as const,
     pendingExternalSourceId: input.pending_transaction_id || null,
     categorizationStatus: "missing" as const,
@@ -323,7 +330,7 @@ async function syncAccounts(
       accountType: mappedType,
       institutionName,
       maskedNumber: account.mask ? `•••• ${account.mask.slice(-4)}` : "Protected",
-      currency: (account.balances.iso_currency_code || "CAD").slice(0, 3).toUpperCase(),
+      currency: (/^[A-Z]{3}$/i.test(account.balances.iso_currency_code??"") ? account.balances.iso_currency_code! : "UNK").toUpperCase(),
       provider: PLAID_PROVIDER,
       externalAccountRef: account.account_id,
       externalItemRef: itemId,
@@ -341,7 +348,7 @@ async function syncAccounts(
       externalItemRef: itemId,
       institutionName,
       maskedNumber: account.mask ? `•••• ${account.mask.slice(-4)}` : "Protected",
-      currency: (account.balances.iso_currency_code || "CAD").slice(0, 3).toUpperCase(),
+      currency: (/^[A-Z]{3}$/i.test(account.balances.iso_currency_code??"") ? account.balances.iso_currency_code! : "UNK").toUpperCase(),
       liveBalanceCents: toCents(account.balances.current),
       availableBalanceCents: toCents(account.balances.available),
       connectionStatus: "healthy",
@@ -380,30 +387,21 @@ async function syncAccounts(
 
 type PlaidConnectionClaim = {
   id: string;
+  version: number;
   previousStatus: "not_connected" | "revoked";
 };
 
-async function claimPlaidConnection(organizationId: string): Promise<PlaidConnectionClaim> {
+export async function claimPlaidConnection(organizationId: string, freeGrantId: string | null = null): Promise<PlaidConnectionClaim> {
   const database = getDb();
   const now = new Date();
-  const inserted = await database.insert(integrationConnections).values({
-    id: crypto.randomUUID(),
-    organizationId,
-    provider: PLAID_PROVIDER,
-    sourceNamespace: "legacy",
-    status: "pending",
-    scopesJson: "[]",
-    dataPromotionStatus: "blocked",
-    createdAt: now,
-    updatedAt: now,
-  }).onConflictDoNothing({
-    target: [
-      integrationConnections.organizationId,
-      integrationConnections.provider,
-      integrationConnections.sourceNamespace,
-    ],
-  }).returning({ id: integrationConnections.id });
-  if (inserted[0]) return { id: inserted[0].id, previousStatus: "not_connected" };
+  const selected = freeGrantId ? sql`EXISTS (SELECT 1 FROM free_integration_selections WHERE organization_id=${organizationId} AND provider=${PLAID_PROVIDER} AND grant_id=${freeGrantId})` : sql`1`;
+  const inserted = await getD1().prepare(`INSERT INTO integration_connections
+    (id,organization_id,provider,source_namespace,status,scopes_json,data_promotion_status,free_grant_id,created_at,updated_at)
+    SELECT ?,?,'plaid','legacy','pending','[]','blocked',?,?,?
+    WHERE ? IS NULL OR EXISTS (SELECT 1 FROM free_integration_selections WHERE organization_id=? AND provider='plaid' AND grant_id=?)
+    ON CONFLICT(organization_id,provider,source_namespace) DO NOTHING RETURNING id`)
+    .bind(crypto.randomUUID(), organizationId, freeGrantId, Math.floor(now.getTime()/1000), Math.floor(now.getTime()/1000), freeGrantId, organizationId, freeGrantId).first<{id:string}>();
+  if (inserted) return { id: inserted.id, version: 0, previousStatus: "not_connected" };
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const [current] = await database.select({
@@ -427,6 +425,7 @@ async function claimPlaidConnection(organizationId: string): Promise<PlaidConnec
       throw new ApiError(409, "PLAID_CONNECTION_STATE_INVALID", "The current Plaid connection state cannot be replaced safely.");
     }
     const claimed = await database.update(integrationConnections).set({
+      freeGrantId,
       status: "pending",
       lastErrorCode: null,
       syncLeaseOwner: null,
@@ -438,8 +437,10 @@ async function claimPlaidConnection(organizationId: string): Promise<PlaidConnec
       eq(integrationConnections.organizationId, organizationId),
       eq(integrationConnections.provider, PLAID_PROVIDER),
       eq(integrationConnections.status, current.status),
+      eq(integrationConnections.syncVersion, current.syncVersion),
+      selected,
     )).returning({ id: integrationConnections.id });
-    if (claimed[0]) return { id: claimed[0].id, previousStatus: current.status };
+    if (claimed[0]) return { id: claimed[0].id, version: current.syncVersion + 1, previousStatus: current.status };
   }
   throw new ApiError(409, "PLAID_CONNECTION_IN_PROGRESS", "A Plaid connection is already in progress. Wait for it to finish before retrying.");
 }
@@ -460,12 +461,49 @@ async function restorePlaidConnectionClaim(organizationId: string, claim: PlaidC
     eq(integrationConnections.id, claim.id),
     eq(integrationConnections.organizationId, organizationId),
     eq(integrationConnections.provider, PLAID_PROVIDER),
+    eq(integrationConnections.syncVersion, claim.version),
   ));
 }
 
-export async function exchangePlaidPublicToken(organizationId: string, publicToken: string, fetcher: typeof fetch = fetch) {
+export async function savePlaidClaimSecret(input: { organizationId: string; claim: PlaidConnectionClaim; freeGrantId: string | null; secretId: string; accessTokenCiphertext: string; itemIdCiphertext: string; now: Date }) {
+  const stamp = Math.floor(input.now.getTime()/1000);
+  const saved = await getD1().prepare(`INSERT INTO integration_secrets
+    (id,organization_id,provider,connection_id,access_token_ciphertext,refresh_token_ciphertext,token_expires_at,created_at,updated_at)
+    SELECT ?,?,'plaid',?,?,?,4070908800,?,?
+    WHERE EXISTS (SELECT 1 FROM integration_connections c WHERE c.id=? AND c.organization_id=? AND c.provider='plaid' AND c.status='pending' AND c.sync_version=?
+      AND (? IS NULL OR (c.free_grant_id=? AND EXISTS (SELECT 1 FROM free_integration_selections s WHERE s.organization_id=c.organization_id AND s.provider='plaid' AND s.grant_id=?))))
+    ON CONFLICT(connection_id) DO UPDATE SET id=excluded.id,access_token_ciphertext=excluded.access_token_ciphertext,refresh_token_ciphertext=excluded.refresh_token_ciphertext,token_expires_at=excluded.token_expires_at,updated_at=excluded.updated_at
+    RETURNING id`).bind(input.secretId,input.organizationId,input.claim.id,input.accessTokenCiphertext,input.itemIdCiphertext,stamp,stamp,input.claim.id,input.organizationId,input.claim.version,input.freeGrantId,input.freeGrantId,input.freeGrantId).first<{id:string}>();
+  if (!saved) throw new ApiError(409,"PLAID_CONNECTION_CLAIM_LOST","This bank connection changed before authorization could be saved. Please start again.");
+}
+
+async function retainPlaidRevocation(organizationId: string, accessToken: string, itemId: string) {
+  // A superseded attempt has its own cleanup authority, never the winner's tokens.
+  const id=crypto.randomUUID(), secretId=crypto.randomUUID(), now=Math.floor(Date.now()/1000);
+  const access=await encrypt(accessToken), item=await encrypt(itemId);
+  await getD1().batch([
+    getD1().prepare("INSERT INTO integration_connections (id,organization_id,provider,source_namespace,status,scopes_json,data_promotion_status,last_error_code,created_at,updated_at) VALUES (?,?,'plaid',?,'revoked','[]','blocked','PLAID_PROVISIONING_CLEANUP_REQUIRED',?,?)").bind(id,organizationId,`cleanup:${id}`,now,now),
+    getD1().prepare("INSERT INTO integration_secrets (id,organization_id,provider,connection_id,access_token_ciphertext,refresh_token_ciphertext,token_expires_at,created_at,updated_at) VALUES (?,?,'plaid',?,?,?,4070908800,?,?)").bind(secretId,organizationId,id,access,item,now,now),
+  ]);
+}
+
+async function cleanupPlaidRevocations(organizationId: string, fetcher: typeof fetch) {
+  const rows=(await getD1().prepare("SELECT c.id,k.id secret_id,k.access_token_ciphertext token FROM integration_connections c JOIN integration_secrets k ON k.connection_id=c.id AND k.organization_id=c.organization_id AND k.provider=c.provider WHERE c.organization_id=? AND c.provider='plaid' AND c.source_namespace LIKE 'cleanup:%' AND c.status='revoked'").bind(organizationId).all<{id:string;secret_id:string;token:string}>()).results??[];
+  for (const row of rows) {
+    await plaidRequest("/item/remove",{access_token:await decrypt(row.token)},fetcher);
+    await getD1().batch([
+      getD1().prepare("DELETE FROM integration_secrets WHERE id=? AND connection_id=? AND organization_id=? AND provider='plaid'").bind(row.secret_id,row.id,organizationId),
+      getD1().prepare("DELETE FROM integration_connections WHERE id=? AND organization_id=? AND provider='plaid' AND status='revoked' AND source_namespace LIKE 'cleanup:%'").bind(row.id,organizationId),
+    ]);
+  }
+  return rows.length;
+}
+
+export async function exchangePlaidPublicToken(organizationId: string, publicToken: string, fetcher: typeof fetch = fetch, freeGrantId: string | null = null) {
   await encryptionKey();
-  const claim = await claimPlaidConnection(organizationId);
+  const claim = await claimPlaidConnection(organizationId, freeGrantId);
+  const secretId = crypto.randomUUID();
+  let secretSaved = false;
   let exchange: { access_token: string; item_id: string } | null = null;
   const now = new Date();
   const database = getDb();
@@ -473,22 +511,8 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
     exchange = await plaidRequest<{ access_token: string; item_id: string }>("/item/public_token/exchange", { public_token: publicToken }, fetcher);
     const accessTokenCiphertext = await encrypt(exchange.access_token);
     const itemIdCiphertext = await encrypt(exchange.item_id);
-    await database.insert(integrationSecrets).values({
-      id: crypto.randomUUID(),
-      organizationId,
-      provider: PLAID_PROVIDER,
-      connectionId: claim.id,
-      accessTokenCiphertext,
-      refreshTokenCiphertext: itemIdCiphertext,
-      tokenExpiresAt: new Date("2099-12-31T00:00:00Z"),
-      createdAt: now,
-      updatedAt: now,
-    }).onConflictDoUpdate({ target: [integrationSecrets.connectionId], set: {
-      accessTokenCiphertext,
-      refreshTokenCiphertext: itemIdCiphertext,
-      tokenExpiresAt: new Date("2099-12-31T00:00:00Z"),
-      updatedAt: now,
-    }});
+    await savePlaidClaimSecret({ organizationId, claim, freeGrantId, secretId, accessTokenCiphertext, itemIdCiphertext, now });
+    secretSaved = true;
     const item = await plaidRequest<{ item?: { institution_id?: string | null } }>("/item/get", { access_token: exchange.access_token }, fetcher);
     const institutionId = item.item?.institution_id?.trim() ?? "";
     let institutionName = "Connected financial institution";
@@ -516,6 +540,8 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
       eq(integrationConnections.organizationId, organizationId),
       eq(integrationConnections.provider, PLAID_PROVIDER),
       eq(integrationConnections.status, "pending"),
+      eq(integrationConnections.syncVersion, claim.version),
+      ...(freeGrantId ? [eq(integrationConnections.freeGrantId, freeGrantId), sql`EXISTS (SELECT 1 FROM free_integration_selections WHERE organization_id=${organizationId} AND provider=${PLAID_PROVIDER} AND grant_id=${freeGrantId})`] : []),
     )).returning({ id: integrationConnections.id });
     if (!updated[0]) throw new ApiError(409, "PLAID_CONNECTION_CLAIM_LOST", "The Plaid connection could not be finalized safely.");
     return { connectionId: claim.id, itemId: exchange.item_id, institutionName };
@@ -532,10 +558,15 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
       providerAuthorizationRevoked = false;
     }
     if (providerAuthorizationRevoked) {
-      await database.delete(integrationSecrets).where(eq(integrationSecrets.connectionId, claim.id));
+      await database.delete(integrationSecrets).where(and(eq(integrationSecrets.id,secretId),eq(integrationSecrets.connectionId,claim.id),eq(integrationSecrets.organizationId,organizationId),eq(integrationSecrets.provider,PLAID_PROVIDER)));
       await restorePlaidConnectionClaim(organizationId, claim);
     } else {
-      await database.update(integrationConnections).set({
+      if (!secretSaved) {
+        await restorePlaidConnectionClaim(organizationId,claim);
+        await retainPlaidRevocation(organizationId,exchange.access_token,exchange.item_id);
+        throw error;
+      }
+      const retained = await database.update(integrationConnections).set({
         status: "error",
         externalAccountRef: exchange.item_id,
         externalAccountName: "Plaid bank feed requiring cleanup",
@@ -545,8 +576,10 @@ export async function exchangePlaidPublicToken(organizationId: string, publicTok
         updatedAt: new Date(),
       }).where(and(
         eq(integrationConnections.id, claim.id),
-        eq(integrationConnections.organizationId, organizationId),
-      ));
+      eq(integrationConnections.organizationId, organizationId),
+      eq(integrationConnections.syncVersion, claim.version),
+      )).returning({id:integrationConnections.id});
+      if (!retained.length) await retainPlaidRevocation(organizationId,exchange.access_token,exchange.item_id);
     }
     throw error;
   }
@@ -570,6 +603,7 @@ async function credentials(
   )).where(and(
     eq(integrationSecrets.organizationId, organizationId),
     eq(integrationSecrets.provider, PLAID_PROVIDER),
+    eq(integrationConnections.sourceNamespace, "legacy"),
     inArray(integrationConnections.status, allowedStatuses),
   )).limit(1);
   if (!row || !allowedStatuses.includes(row.status as "connected" | "error")) {
@@ -814,7 +848,12 @@ export async function syncPlaidTransactions(organizationId: string, fetcher: typ
 }
 
 export async function disconnectPlaid(organizationId: string, fetcher: typeof fetch = fetch) {
-  const current = await credentials(organizationId, ["connected", "error"]);
+  const cleaned = await cleanupPlaidRevocations(organizationId,fetcher);
+  const current = await credentials(organizationId, ["connected", "error"]).catch(error => {
+    if(cleaned && error instanceof ApiError && error.code === "PLAID_NOT_CONNECTED") return null;
+    throw error;
+  });
+  if (!current) return;
   const syncLease = await acquireIntegrationSyncLease(organizationId, PLAID_PROVIDER, current.connectionId);
   if (!syncLease) {
     throw new ApiError(409, "PLAID_SYNC_IN_PROGRESS", "Wait for the active transaction sync to finish before disconnecting this institution.");
@@ -957,6 +996,8 @@ export async function deletePlaidConsumerData(organizationId: string) {
   if (activeConnection) {
     throw new ApiError(409, "PLAID_DISCONNECT_REQUIRED", "Disconnect Plaid before deleting retained financial data.");
   }
+  const retainedToken = await database.prepare("SELECT id FROM integration_secrets WHERE organization_id=? AND provider='plaid' LIMIT 1").bind(organizationId).first();
+  if (retainedToken) throw new ApiError(409,"PLAID_DISCONNECT_REQUIRED","Finish disconnecting bank access before deleting retained financial data.");
 
   // The batch is atomic in D1. Unreviewed imports are deleted. Transactions
   // already approved, reconciled, or posted into a journal retain only the

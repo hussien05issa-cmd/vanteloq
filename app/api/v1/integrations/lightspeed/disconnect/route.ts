@@ -1,3 +1,4 @@
+import { releaseIntegrationSelectionIfUnused } from "../../../../../../server/integrations/free-selection";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "../../../../../../db";
 import {
@@ -68,7 +69,8 @@ export async function POST(request: Request) {
         dataPromotionEnabled: false,
       },
     });
-    return jsonResponse({
+    await releaseIntegrationSelectionIfUnused(context.organizationId, "lightspeed");
+      return jsonResponse({
       disconnected: true,
       localCredentialsDeleted: true,
       retainedForAudit: ["outlet mappings", "sync runs", "staged records", "audit events"],

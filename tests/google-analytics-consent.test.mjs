@@ -44,6 +44,16 @@ test("analytics page views exclude query strings and advertising signals", async
   assert.doesNotMatch(consent, /user_id|email_address|phone_number/i);
 });
 
+test("cookie settings retains its action within a homepage-only dark footer surface", async () => {
+  const [consent, theme] = await Promise.all([
+    source("app/google-analytics-consent.tsx"),
+    source("app/public-jetblack.css"),
+  ]);
+  assert.match(consent, /<div className="analytics-settings-footer">\s*<button type="button" className="analytics-settings-button"[^>]+onClick=\{\(\) => setSettingsOpen\(true\)\}/);
+  assert.match(theme, /\.public-site\.reference-home\[data-public-theme="dark"\] ~ \.analytics-settings-footer\s*\{\s*display: flow-root; background: #050608;/);
+  assert.doesNotMatch(theme, /(?:^|\n)\s*\.analytics-settings-footer\s*\{/);
+});
+
 test("the worker and legal notices disclose the consent controlled analytics provider", async () => {
   const [worker, cookies, privacy, subprocessors, exampleEnv] = await Promise.all([
     source("worker/index.ts"),

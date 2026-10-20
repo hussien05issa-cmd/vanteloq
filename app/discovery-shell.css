@@ -1,0 +1,65 @@
+.discovery-shell {
+  --discovery-canvas: #050608;
+  --discovery-panel: #10151e;
+  --discovery-raised: #192232;
+  --discovery-ink: #f5f7fb;
+  --discovery-muted: #bac6d8;
+  --discovery-line: #47566d;
+  --discovery-link: #8ebeff;
+  --discovery-primary: #1d60dc;
+  --discovery-focus: #a2ceff;
+  color-scheme: dark;
+  background: var(--discovery-canvas);
+  color: var(--discovery-ink);
+  min-height: 100dvh;
+  font-family: var(--font-product, "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+  line-height: 1.65;
+}
+.discovery-shell[data-public-theme="light"] {
+  --discovery-canvas: #f7f9fd;
+  --discovery-panel: #ffffff;
+  --discovery-raised: #eaf1fa;
+  --discovery-ink: #111d33;
+  --discovery-muted: #455570;
+  --discovery-line: #71839e;
+  --discovery-link: #164fba;
+  --discovery-focus: #1557d0;
+  color-scheme: light;
+}
+.discovery-shell :is(h1,h2,h3,h4,strong,dt) { color: var(--discovery-ink); }
+.discovery-shell :is(p,li,small,dd) { color: var(--discovery-muted); }
+.discovery-shell a { color: var(--discovery-link); text-underline-offset: .2em; }
+.discovery-shell :is(button,input,select,textarea) { font: inherit; }
+.discovery-shell :is(a,button,input,select,textarea,summary):focus-visible { outline: 3px solid var(--discovery-focus); outline-offset: 4px; }
+.discovery-shell .public-shell-nav { background: var(--discovery-panel); color: var(--discovery-ink); border-color: var(--discovery-line); }
+.discovery-shell .public-shell-nav a { color: inherit; }
+.discovery-shell .public-shell-nav a:is(:hover, :focus-visible),
+.discovery-shell .public-shell-links summary:is(:hover, :focus-visible) { color: var(--discovery-link); }
+.discovery-shell .public-shell-links > .public-demo-link { color: var(--discovery-ink); background: var(--discovery-raised); border-color: var(--discovery-line); }
+.discovery-shell .public-shell-links > .public-demo-link:is(:hover, :focus-visible) { color: var(--discovery-ink); background: var(--discovery-panel); border-color: var(--discovery-link); }
+.discovery-shell .public-shell-resources,
+.discovery-shell .public-shell-links.is-open { background: var(--discovery-panel); border-color: var(--discovery-line); }
+.discovery-shell .public-shell-resources a:hover { background: var(--discovery-raised); }
+.discovery-shell .public-shell-account button,
+.discovery-shell .public-shell-menu { color: var(--discovery-ink); }
+.discovery-shell .public-shell-menu { background: var(--discovery-raised); border-color: var(--discovery-line); }
+.discovery-shell .public-shell-free { background: var(--discovery-primary); color: #fff!important; }
+.discovery-shell .public-appearance-control select { min-height: 44px; max-width: 100px; background: var(--discovery-raised); color: var(--discovery-ink); border: 1px solid var(--discovery-line); border-radius: 10px; padding: 7px 10px; }
+.discovery-shell .public-appearance-notice { display: block; max-width: 220px; font-size: 12px; color: var(--discovery-muted); }
+.discovery-shell .public-shell-footer { background: var(--discovery-panel); border-top: 1px solid var(--discovery-line); }
+.discovery-shell .public-shell-footer :is(p,a,strong,span) { color: var(--discovery-muted); }
+.discovery-shell .public-shell-footer strong { color: var(--discovery-ink); }
+.discovery-skip { position: absolute; left: 18px; top: -80px; z-index: 100; padding: 10px 16px; border-radius: 8px; background: var(--discovery-panel); }
+.discovery-skip:focus { top: 12px; }
+@media (min-width: 801px) and (max-width: 1100px) {
+  .discovery-shell .public-shell-nav { flex-wrap: wrap; }
+  .discovery-shell .public-shell-brand { margin-right: auto; }
+  .discovery-shell .public-shell-account { order: 1; }
+  .discovery-shell .public-shell-links { order: 2; width: 100%; justify-content: center; }
+}
+@media (max-width: 800px) {
+  .discovery-shell .public-shell-nav { padding-inline: 14px; gap: 8px; }
+  .discovery-shell .public-shell-account { gap: 8px; }
+  .discovery-shell .public-appearance-control select { max-width: 85px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) { .discovery-shell { scroll-behavior: auto; } }

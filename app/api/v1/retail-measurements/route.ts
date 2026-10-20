@@ -7,6 +7,7 @@ import { retailAccess, retailOutlets, retailPeriod, readRetailMeasurements } fro
 import { measurementTemplates, parseMeasurementCsv, type MeasurementKind } from "../../../../domain/retail-measurements";
 import { recordAudit } from "../../../../server/audit";
 import type { AccessContext } from "../../../../server/authorization";
+import { requireReportImportPrivacyAcknowledgement, reportImportPrivacyAuditDetails } from "../../../../server/report-import-privacy";
 
 const roles = ["owner", "admin", "manager"] as const;
 function kindOf(value: unknown): MeasurementKind {
@@ -45,6 +46,7 @@ export async function POST(request: Request) {
     const body = await readJsonObject(request, 120_000), kind = kindOf(body.kind);
     await authorizeKind(context, kind);
     if (!["save", "delete"].includes(String(body.action))) throw new ApiError(400, "RETAIL_INPUT_ACTION", "Choose save or delete.");
+    const acknowledgement = body.action === "save" ? requireReportImportPrivacyAcknowledgement(body.importPrivacyAcknowledgement) : null;
     if (body.reviewed !== true) throw new ApiError(400, "RETAIL_INPUT_REVIEW", "Review the source, period and replacement before saving.");
     const period = retailPeriod(typeof body.from === "string" ? body.from : null, typeof body.to === "string" ? body.to : null, context.organization.timezone);
     const global = kind === "catalog" || kind === "loyalty", from = global ? "" : period.from, to = global ? "" : period.to;
@@ -112,7 +114,7 @@ export async function POST(request: Request) {
       if (String(error).includes("UNIQUE")) throw new ApiError(409, "RETAIL_INPUT_CONFLICT", "Another person saved evidence here. Reload before replacing it.");
       throw error;
     }
-    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "retail.evidence_saved", resourceType: "retail_measurement", resourceId: id, details: { kind, from, to, rows: entries.length, version: (prior?.version ?? 0) + 1 } });
+    await recordAudit({ request, requestId, organizationId: context.organizationId, actorUserId: context.userId, action: "retail.evidence_saved", resourceType: "retail_measurement", resourceId: id, details: { kind, from, to, rows: entries.length, version: (prior?.version ?? 0) + 1, ...reportImportPrivacyAuditDetails(acknowledgement!) } });
     return jsonResponse({ saved: true, rows: entries.length, version: (prior?.version ?? 0) + 1 });
   });
 }

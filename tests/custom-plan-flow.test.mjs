@@ -6,7 +6,7 @@ test("public contact route delivers only after same-origin, bounded payload, con
  const {worker,environment,dispose}=await createEnvironment();
  const oldFetch=globalThis.fetch;let sent=0;
  Object.assign(environment,{RESEND_API_KEY:"fixture-secret",CUSTOM_PLAN_INQUIRY_TO:"private-owner@example.com",TURNSTILE_SITE_KEY:"public-key",TURNSTILE_SECRET_KEY:"captcha-secret",TURNSTILE_ALLOWED_HOSTNAMES:"vanteloq.example"});
- const body={name:"Visitor",email:"visitor@example.com",company:"Example store",needs:"We need five locations and a larger team.",consent:true,noticeVersion:"custom-plan-contact-v1",submissionId:"11111111-1111-4111-8111-111111111111",website:"",token:"test-token"};
+ const body={name:"Visitor",email:"visitor@example.com",company:"Example store",needs:"We need five locations and a larger team.",consent:true,noticeVersion:"custom-plan-contact-v2",submissionId:"11111111-1111-4111-8111-111111111111",website:"",token:"test-token"};
  const post=(data=body,changes={})=>worker.fetch(new Request(origin+"/api/v1/custom-plan",{method:"POST",headers:{origin,"sec-fetch-site":"same-origin","content-type":"application/json","cf-connecting-ip":"192.0.2.1",...changes},body:JSON.stringify(data)}),environment,context);
  try {
  const providerFetch=async(url,init)=>{
