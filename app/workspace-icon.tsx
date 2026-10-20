@@ -37,6 +37,7 @@ export default function WorkspaceIcon({ name, className = "" }: { name: string; 
     Payroll: <><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3M14 15h3"/></>,
     Search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
     Menu: <path d="M4 6h16M4 12h16M4 18h16"/>,
+    Add: <path d="M12 5v14M5 12h14"/>,
     Alerts: <path d="M6 9a6 6 0 0 1 12 0v6l2 3H4l2-3V9ZM10 21h4"/>,
     Chevron: <path d="m14 6-6 6 6 6"/>,
     Refresh: <path d="M20 7a8 8 0 1 0 1 8M20 3v5h-5"/>,

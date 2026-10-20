@@ -16,4 +16,19 @@
   --premium-font: "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   --premium-duration: 160ms;
   --premium-radius: 24px;
+  /* Product roles, separate from the public hero's responsive display type. */
+  --premium-type-title: clamp(28px, 2vw, 32px);
+  --premium-type-section: 18px;
+  --premium-type-body: 15px;
+  --premium-type-control: 14px;
+  --premium-type-meta: 12px;
+  --premium-space-1: 4px;
+  --premium-space-2: 8px;
+  --premium-space-3: 12px;
+  --premium-space-4: 16px;
+  --premium-space-5: 20px;
+  --premium-space-6: 24px;
+  --premium-radius-control: 12px;
+  --premium-radius-panel: 20px;
+  --premium-icon-size: 20px;
 }

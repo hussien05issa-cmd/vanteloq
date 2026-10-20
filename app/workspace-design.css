@@ -61,12 +61,13 @@
 .operating-shell .main-panel { min-width: 0; }
 .operating-shell .content { padding: 28px clamp(18px, 2.4vw, 36px) 48px; max-width: 1760px; margin-inline: auto; }
 .operating-shell :is(h1, h2, h3, h4, p) { overflow-wrap: break-word; }
-.operating-shell h1 { font-size: 26px !important; font-weight: 650; line-height: 1.2; letter-spacing: -.035em; }
-.operating-shell h2 { font-size: clamp(23px, 2.1vw, 30px) !important; font-weight: 650; line-height: 1.25; letter-spacing: -.035em; }
-.operating-shell h3 { font-size: 18px !important; font-weight: 650; line-height: 1.35; letter-spacing: -.02em; }
+.operating-shell h1 { font-size: var(--premium-type-title) !important; font-weight: 650; line-height: 1.2; letter-spacing: -.035em; }
+.operating-shell h2 { font-size: var(--premium-type-title) !important; font-weight: 650; line-height: 1.25; letter-spacing: -.035em; }
+.operating-shell h3 { font-size: var(--premium-type-section) !important; font-weight: 650; line-height: 1.35; letter-spacing: -.02em; }
 .operating-shell h4 { font-size: 15px !important; font-weight: 650; line-height: 1.4; }
-.operating-shell :is(p, label, dt, dd) { font-size: 14px !important; line-height: 1.55; }
-.operating-shell :is(small, time, summary) { font-size: 12px !important; line-height: 1.5; }
+.operating-shell p { font-size: var(--premium-type-body) !important; line-height: 1.55; }
+.operating-shell :is(label, dt, dd) { font-size: var(--premium-type-control) !important; line-height: 1.55; }
+.operating-shell :is(small, time, summary) { font-size: var(--premium-type-meta) !important; line-height: 1.5; }
 .operating-shell :is(b, strong) { font-size: inherit; }
 .operating-shell :is(.eyebrow, .card-kicker, .page-intro > div > p, .section-heading > p) {
   color: var(--ws-blue); font-size: 11px !important; line-height: 1.5; font-weight: 750; letter-spacing: .12em;
@@ -84,17 +85,18 @@
 
 .operating-shell .generic-row .numeric-cell { text-align: right; }
 /* Persistent navigation: quiet colour, recognizable icons, full-size labels. */
-.operating-shell .workspace-icon { width: 19px; height: 19px; flex: 0 0 19px; vertical-align: middle; }
+/* Only utility SVGs share a slot. Brand artwork retains its optical sizing. */
+.operating-shell svg.workspace-icon { width: var(--premium-icon-size); height: var(--premium-icon-size); flex: 0 0 var(--premium-icon-size); vertical-align: middle; }
 .operating-shell .sidebar { width: 248px; background: #0d2037; border-color: #20354e; padding: 18px 12px 14px; box-shadow: none; }
 .operating-shell .brand { gap: 10px; margin-bottom: 10px; padding: 0 8px 12px; }
 .operating-shell .brand-name { font-size: 18px !important; font-weight: 700; }
 .operating-shell .brand-name small { font-size: 10px !important; color: #a7b8cb; letter-spacing: .08em; }
 .operating-shell .workspace-switcher {
   background: #172e49; border-color: #2a415d; border-radius: 10px;
-  padding: 11px !important; gap: 6px 10px !important;
-  grid-template-columns: 32px minmax(0, 1fr) !important;
+  padding: var(--premium-space-3); gap: var(--premium-space-2) var(--premium-space-3);
+  grid-template-columns: 34px minmax(0, 1fr);
 }
-.operating-shell .workspace-switcher .workspace-avatar { width: 32px; height: 32px; font-size: 12px !important; background: #2c609b; }
+.operating-shell .workspace-switcher .workspace-avatar { width: 34px; height: 34px; font-size: 12px !important; background: #2c609b; }
 .operating-shell .workspace-switcher > span:nth-child(2) b { display: block; font-size: 12px !important; line-height: 1.5 !important; }
 .operating-shell .workspace-switcher > span:nth-child(2) small { display: block; color: #b2c2d3; font-size: 11px !important; line-height: 1.5 !important; }
 .operating-shell .workspace-switcher .location-switcher select {
@@ -107,7 +109,7 @@
 .operating-shell .nav-group > p { font-size: 10px !important; color: #93abc5; letter-spacing: .1em; margin: 0 10px 8px; }
 .operating-shell .nav-item { gap: 11px; min-height: 42px; padding: 9px 11px; border-radius: 8px; color: #c5d2e3; font-weight: 500; }
 .operating-shell .nav-item .nav-label { font-size: 13px !important; line-height: 1.4; text-align: left; }
-.operating-shell .nav-item > .workspace-icon { color: #91abc8; width: 18px; height: 18px; flex-basis: 18px; }
+.operating-shell .nav-item > .workspace-icon { color: #91abc8; }
 .operating-shell .nav-item:hover { background: #1b334f; }
 .operating-shell .nav-item.active { background: #244465; border-color: #365d87; color: #fff; }
 .operating-shell .nav-item.active > .workspace-icon { color: #bed8ff; }
@@ -356,7 +358,7 @@
 .operating-shell .bookloq-side nav p { font-size: 10px !important; color: #61768a; margin: 18px 10px 6px; }
 .operating-shell .bookloq-side nav button { min-height: 40px; height: auto; padding: 10px; gap: 9px; border-radius: 7px; color: #43596c; font-size: 12px !important; line-height: 1.45; }
 .operating-shell .bookloq-side nav button.active { color: #075f5a; background: #e2f0ee; }
-.operating-shell .bookloq-side nav .workspace-icon { width: 17px; height: 17px; flex-basis: 17px; }
+.operating-shell .bookloq-side nav svg.workspace-icon { width: var(--premium-icon-size); height: var(--premium-icon-size); flex-basis: var(--premium-icon-size); }
 .operating-shell .bookloq-side-foot b { font-size: 12px; }
 .operating-shell .bookloq-main { min-width: 0; }
 .operating-shell .bookloq-top { position: static; min-height: 86px; height: auto; padding: 20px 26px; gap: 18px; flex-wrap: wrap; background: #fff; }

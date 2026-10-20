@@ -18,6 +18,7 @@ import "./workspace-contrast.css";
 import "./premium-tokens.css";
 import "./premium-workspace.css";
 import "./premium-header.css";
+import "./task-presentation.css";
 import { useWorkspaceAppearance } from "./workspace-appearance";
 import BusinessWorkspaceSelector, { OwnerWorkspaceContext } from "./business-workspace-selector";
 import { workspaceViewFromHash, workspaceViewHash } from "../domain/owner-navigation";
@@ -30,6 +31,7 @@ import { ReportImportPrivacyNotice } from "./report-import-privacy";
 import { importPrivacyAcknowledgement } from "../domain/report-import-privacy";
 import type { DailyImportReview } from "../server/daily-metric-import";
 import WorkspaceSkeleton from "./workspace-skeleton";
+import TaskReadSummary from "./task-read-summary";
 import DashboardGreeting from "./dashboard-greeting";
 import OwnerBriefingPanel, { useBriefingSelection } from "./owner-briefing";
 import type { OwnerBriefing, OwnerBriefingPriority } from "../domain/owner-briefing";
@@ -1333,8 +1335,8 @@ export default function VanteloqApp({
             {subscriptionFeatures.includes("operations.basic") && appPermissions.includes("operations.manage") && <button
               type="button"
               className="primary"
-              aria-label="Create a task"
-              title="Create a task"
+              aria-label="Create task"
+              title="Create task"
               onClick={() =>
                 createTask({
                   title: "",
@@ -1344,7 +1346,7 @@ export default function VanteloqApp({
                 })
               }
             >
-              + Quick action
+              <WorkspaceIcon name="Add"/><span>Create task</span>
             </button>}
           </div>
         </header>
@@ -2322,39 +2324,15 @@ export function TaskCentre({
           + Create task
         </button>
       </section>
-      <p className="task-archive-summary" role="status">{loading ? "Loading tasks…" : `${tasks.length} loaded tasks. ${nextCursor ? "Earlier tasks are available below. Counts and filters describe loaded tasks." : "End of the accessible archive."}`} The latest page refreshes every 30 seconds while visible. Reading earlier tasks pauses automatic refresh. Refresh actions starts from the latest page.</p>
-      <section className="task-stats">
-        <div>
-          <strong>{active.length}</strong>
-          <span>Active</span>
-        </div>
-        <div>
-          <strong>
-            {active.filter((task) => task.priority === "high").length}
-          </strong>
-          <span>High priority</span>
-        </div>
-        <div>
-          <strong>
-            {tasks.filter((task) => task.sourceType === "insight").length}
-          </strong>
-          <span>From intelligence</span>
-        </div>
-        <div>
-          <strong>
-            {tasks.filter((task) => task.status === "done").length}
-          </strong>
-          <span>Completed</span>
-        </div>
-      </section>
+      <TaskReadSummary loading={loading} error={error} archiveError={archiveError} loaded={tasks.length} active={active.length} highPriority={active.filter((task) => task.priority === "high").length} fromIntelligence={tasks.filter((task) => task.sourceType === "insight").length} completed={tasks.filter((task) => task.status === "done").length} hasEarlier={nextCursor !== null}/>
       <div className="action-tools"><label>Find an action<input type="search" value={query} placeholder="Search loaded tasks" onChange={event => setQuery(event.target.value)}/></label><label>Status<select value={statusFilter} onChange={event => setStatusFilter(event.target.value)}><option value="active">Active</option><option value="all">All actions</option><option value="open">To do</option><option value="in_progress">In progress</option><option value="done">Done</option></select></label><button className="secondary" type="button" disabled={updating !== null || olderPending} onClick={() => void load()}>Refresh actions</button></div>
       {updateError && <p className="action-update-error" role="alert">{updateError}</p>}
       <label className="task-member-field"><span><input type="checkbox" checked={mine} onChange={event => setMine(event.target.checked)}/> Assigned to me</span><small>Visible tasks follow your workspace, location and evidence permissions.</small></label>
       <article className="card task-board">
         {loading ? (
-          <WorkspaceSkeleton compact label="Loading your actions"/>
-        ) : error ? (
-          <FailureState message={error} retry={load} />
+          <WorkspaceSkeleton compact variant="tasks" label="Loading your actions"/>
+        ) : error || (archiveError && !tasks.length) ? (
+          <FailureState message={error || archiveError} retry={load} />
         ) : !tasks.length ? (
           <div className="empty-state">
             <b>No assigned actions.</b>
@@ -2418,7 +2396,7 @@ export function TaskCentre({
           </div>
         )}
       </article>
-      {archiveError && <p className="action-update-error" role="alert">{archiveError} Loaded tasks are preserved.</p>}
+      {archiveError && <p className="action-update-error" role="alert">{archiveError}{tasks.length > 0 ? " Loaded tasks are preserved." : " Task counts are unavailable. Refresh actions to retry."}</p>}
       {nextCursor !== null && <button className="secondary" type="button" disabled={olderPending || updating !== null} onClick={() => void load(nextCursor)}>{olderPending ? "Loading earlier tasks…" : "Load earlier tasks"}</button>}
     </div>
   );

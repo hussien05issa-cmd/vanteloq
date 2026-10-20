@@ -76,7 +76,16 @@
   line-height: 1.65;
   letter-spacing: normal;
 }
-@media (min-width: 881px) and (max-width: 1280px) {
+/* Fit the existing destinations on one desktop row; retain a deliberate
+   second row only in the narrow range before the mobile disclosure. */
+@media (min-width: 1024px) {
+  .public-site.reference-home .public-nav { grid-template-columns: auto minmax(0, 1fr) auto; gap: 0 16px; }
+  .reference-home .public-nav > .public-brand-family { grid-column: 1; grid-row: 1; }
+  .reference-home .public-nav nav { grid-column: 2; grid-row: 1; width: auto; padding-top: 0; flex-wrap: nowrap; }
+  .reference-home .public-nav > .public-nav-actions { grid-column: 3; grid-row: 1; }
+  .public-site.reference-home .public-nav nav > a { font-size: var(--premium-type-control); }
+}
+@media (min-width: 881px) and (max-width: 1023px) {
   .reference-home .public-nav { grid-template-columns: minmax(0, 1fr) auto; row-gap: 10px; }
   .reference-home .public-nav > .public-brand-family { grid-column: 1; grid-row: 1; }
   .reference-home .public-nav > .public-nav-actions { grid-column: 2; grid-row: 1; }

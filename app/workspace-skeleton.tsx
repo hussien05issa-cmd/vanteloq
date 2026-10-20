@@ -4,7 +4,7 @@ import "./workspace-skeleton.css";
 type SkeletonProps = {
   label?: string;
   compact?: boolean;
-  variant?: "records" | "overview";
+  variant?: "records" | "overview" | "tasks";
   heading?: boolean;
   overview?: Pick<DashboardPreferences, "widgets" | "sections">;
   summary?: boolean;
@@ -43,6 +43,6 @@ function OverviewShape({ compact, heading, overview, summary }: SkeletonProps) {
 export default function WorkspaceSkeleton({ label = "Loading your workspace", compact = false, variant = "records", heading = true, overview, summary = true }: SkeletonProps) {
   return <section className={`workspace-skeleton${variant === "overview" ? ` skeleton-overview${heading ? "" : " skeleton-overview-inline"}` : compact ? " compact" : ""}`} role="status" aria-live="polite" aria-atomic="true" aria-label={label} aria-busy="true">
     <span className="skeleton-status">{label}</span>
-    {variant === "overview" ? <OverviewShape compact={compact} heading={heading} overview={overview} summary={summary}/> : <div aria-hidden="true"><div className="skeleton-heading"><i/><i/></div><div className="skeleton-metrics">{[0,1,2,3].map(index => <div key={index}><i/><i/><i/></div>)}</div><div className="skeleton-records">{[0,1,2,3].map(index => <div key={index}><i/><i/><i/></div>)}</div></div>}
+    {variant === "overview" ? <OverviewShape compact={compact} heading={heading} overview={overview} summary={summary}/> : variant === "tasks" ? <div className="skeleton-task-list" aria-hidden="true">{[0, 1, 2, 3].map(index => <div className="skeleton-task-row" key={index}><i className="skeleton-task-ring"/><div className="skeleton-task-copy"><i/><i/><i/></div><i className="skeleton-task-control"/></div>)}</div> : <div aria-hidden="true"><div className="skeleton-heading"><i/><i/></div><div className="skeleton-metrics">{[0,1,2,3].map(index => <div key={index}><i/><i/><i/></div>)}</div><div className="skeleton-records">{[0,1,2,3].map(index => <div key={index}><i/><i/><i/></div>)}</div></div>}
   </section>;
 }

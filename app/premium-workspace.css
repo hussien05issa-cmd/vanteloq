@@ -87,7 +87,7 @@
   .card,.dense-panel,.executive-kpi,.executive-detail,.executive-insights,
   .executive-operating-ring,.executive-summary-panels>article,.bookloq-card,
   .integration-card,.settings-content,.control-surface,.dashboard-drawer
-) { border-radius: 20px; }
+) { border-radius: var(--premium-radius-panel); }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
   .executive-summary-panels>article,.executive-empty-message,.executive-industry-guide,
   .executive-industry-guide li,.executive-insight-empty>span,.report-inspector,
@@ -95,10 +95,10 @@
 ) { background: var(--ws-panel); color: var(--ws-ink); border-color: var(--ws-line); box-shadow: none; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
   .page-intro h2,.workspace-titlebar h1,.bookloq-page-intro h1,.bookloq-page-intro h2
-) { font-size: clamp(30px,2.3vw,38px); font-weight: 680; line-height: 1.16; letter-spacing: -.035em; }
+) { font-size: var(--premium-type-title) !important; font-weight: 650; line-height: 1.2; letter-spacing: -.035em; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
   .page-intro p,.bookloq-page-intro>span,.workspace-titlebar>div>span
-) { font-size: 16px; line-height: 1.65; }
+) { font-size: var(--premium-type-body) !important; line-height: 1.55; }
 :is(.operating-shell,.workspace-theme-scope)[data-workspace-theme] :is(
   .card h3,.dense-panel h3,.executive-detail h3,.executive-insights h3,
   .executive-summary-panels h3,.bookloq-card-head h3,.integration-card h3
@@ -126,7 +126,7 @@
   background: var(--ws-input) !important;
   color: var(--ws-ink) !important;
   border-color: var(--ws-control) !important;
-  border-radius: 12px;
+  border-radius: var(--premium-radius-control);
   font-family: inherit;
   font-size: 15px;
 }
