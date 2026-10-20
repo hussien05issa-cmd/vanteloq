@@ -21,7 +21,9 @@ export type AccessContext = {
   organization: typeof workspaces.$inferSelect;
 };
 
-export async function findAccessContext(identity: TrustedIdentity, request?: Request): Promise<AccessContext | null> {
+type AccessResolutionOptions = { bindLegacyIdentity?: boolean; bootstrapInternalAccess?: boolean };
+
+export async function findAccessContext(identity: TrustedIdentity, request?: Request, options: AccessResolutionOptions = {}): Promise<AccessContext | null> {
   let workspace: string | null = null;
   try { workspace = request ? requestedBusinessContext(request) : null; }
   catch (error) { throw new ApiError(400, "WORKSPACE_CONTEXT_INVALID", error instanceof Error ? error.message : "Choose a valid business."); }
@@ -59,6 +61,7 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     if (!identity.subject || !identity.emailVerified) return null;
     if (row.authSubject && (row.authSubject !== identity.subject || row.authProvider !== "supabase")) return null;
     if (!row.authSubject) {
+      if (options.bindLegacyIdentity === false) return null;
       try {
         await getDb().update(users).set({
           authSubject: identity.subject,
@@ -82,7 +85,7 @@ export async function findAccessContext(identity: TrustedIdentity, request?: Req
     organization: row.organization,
   };
   if (identity.provider === "supabase" && identity.assuranceLevel === "aal2") await requireActiveWorkspaceSession(context);
-  await bootstrapFounderInternalAccess(context);
+  if (options.bootstrapInternalAccess !== false) await bootstrapFounderInternalAccess(context);
   return context;
 }
 
@@ -90,9 +93,10 @@ async function requireWorkspaceMembership(
   request: Request,
   allowedRoles: readonly Role[],
   allowDeletion = false,
+  resolution: AccessResolutionOptions = {},
 ): Promise<AccessContext> {
   const identity = await requireIdentity(request);
-  const context = await findAccessContext(identity, request);
+  const context = await findAccessContext(identity, request, resolution);
   if (!context) throw new ApiError(403, "MEMBERSHIP_REQUIRED", "This account does not have access to a workspace.");
   requireAal2(identity);
   if (!allowedRoles.includes(context.role)) {
@@ -122,8 +126,9 @@ export async function requireAccess(
 export async function requireBillingAccess(
   request: Request,
   allowedRoles: readonly Role[],
+  resolution: AccessResolutionOptions = {},
 ): Promise<AccessContext> {
-  return requireWorkspaceMembership(request, allowedRoles);
+  return requireWorkspaceMembership(request, allowedRoles, false, resolution);
 }
 
 export async function requirePrivacyAccess(

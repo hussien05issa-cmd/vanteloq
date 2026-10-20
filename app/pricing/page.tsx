@@ -1,3 +1,4 @@
+import PublicSurface from "../public-surface";
 import {PLAN_COMPARISON as comparisons} from "../../server/entitlements/presentation";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -10,7 +11,7 @@ import { planSelectionUrl } from "../../shared/plan-selection";
 export const metadata: Metadata = { title: "Vanteloq pricing | Monthly plans and BookLoQ", description: "Compare Vanteloq monthly plans and choose BookLoQ as a $39 CAD add-on or a $59 CAD standalone finance workspace.", alternates: { canonical: "/pricing" }, openGraph: { title: "Vanteloq pricing | Monthly plans and BookLoQ", description: "Compare Vanteloq plans and choose BookLoQ with Vanteloq or on its own.", url: "/pricing", type: "website" } };
 const vanteloqPlans = [{ ...FREE_PLAN, features: FREE_PLAN.features as readonly FeatureKey[] }, PLANS.starter, PLANS.growth, PLANS.pro] as const;
 export default function PricingPage() {
- return <div className="public-site demo-page pricing-page">
+ return <PublicSurface className="demo-page pricing-page">
  <PublicPageNav/>
  <main className="product-help"><p className="demo-eyebrow">PLANS & PRICING</p><h1>Start with the product that fits.</h1><p>Start with a regular free plan without a card. Free includes two available integrations of your choice. Upgrade for more users and advanced intelligence. Paid prices are in Canadian dollars.</p>
  <div className="pricing-reassurance"><span>Free has no expiry or payment method</span><span>7-day trial on your first paid subscription</span><span>Cancel before renewal</span><Link href="/#connections">Check your integrations first →</Link></div><PlanFit/>
@@ -21,5 +22,5 @@ export default function PricingPage() {
  <div className="pricing-questions"><details><summary>Is Free a trial?</summary><p>No. Free is a regular plan with no expiry, no card and no automatic charge. It supports one owner, one location, 100 daily sales records and 10 AI replies per month. Choose two available integrations, or start with CSV or manual daily summaries. Upgrade through Settings &gt; Billing &amp; plans when you need more.</p></details><details><summary>How does the seven-day trial work?</summary><p>Your workspace’s first Vanteloq or standalone BookLoQ subscription includes seven days free. A payment method is required. A BookLoQ add-on selected with your first Vanteloq subscription shares that trial. Stripe shows your first charge date and renewal total before you subscribe. Cancel through Manage Billing before that date to avoid the first charge. Existing subscriptions, returning workspaces and add-ons added to a paid plan do not receive another trial.</p></details><details><summary>Do I need to connect a bank to start?</summary><p>No. Start with a supported sales source or structured CSV import. Bank-based cash measures require an authorized, verified connection. Plaid production activation is still required.</p></details><details><summary>Can I change plans later?</summary><p>Workspace billing opens Stripe’s billing portal for available changes and cancellation. Review the effective date and any prorated charges before confirming a change.</p></details><details><summary>Does this replace my accountant?</summary><p>No. BookLoQ organizes records and checks arithmetic. It does not file tax returns, move bank funds or certify that your books are complete. Keep your accountant involved in accounting and tax decisions.</p></details></div>
  <div className="demo-conversion pricing-demo-conversion"><div><span className="pricing-demo-label">INTERACTIVE, FICTIONAL RECORDS</span><h2>See what your next decision could look like.</h2><p>Change a location or cash assumption, inspect the calculation and follow the result to its source rows.</p></div><Link href="/demo">Explore the demo →</Link></div>
  <footer className="pricing-footer"><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/#connections">Integration availability</Link></footer>
- </main></div>;
+ </main></PublicSurface>;
 }

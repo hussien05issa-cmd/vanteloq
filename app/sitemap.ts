@@ -2,11 +2,13 @@ import type { MetadataRoute } from "next";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory } from "./resources/content";
 import { absoluteUrl } from "./seo";
 import { FEATURE_GUIDES } from "./features/content";
+import { articleSearchImage } from "./resources/search";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const articleEntries: MetadataRoute.Sitemap = RESOURCE_ARTICLES.map((article) => ({
     url: absoluteUrl(`/resources/${article.slug}`),
     lastModified: article.updated,
+    images: [absoluteUrl(articleSearchImage(article).src)],
     changeFrequency: "monthly",
     priority: 0.75,
   }));

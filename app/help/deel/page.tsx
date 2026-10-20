@@ -1,3 +1,4 @@
+import PublicSurface from "../../public-surface";
 import type { Metadata } from "next";
 import Link from "next/link";
 import PublicPageNav from "../../public-page-nav";
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 };
 
 export default function DeelHelpPage() {
-  return <div className="public-site demo-page"><PublicPageNav/><main className="product-help">
+  return <PublicSurface className="demo-page"><PublicPageNav/><main className="product-help">
     <p className="demo-eyebrow">DEEL CONNECTION GUIDE</p>
     <h1>Connect Deel for payroll report review.</h1>
     <p>Review available payroll reports as category totals by currency, with their source and limitations visible.</p>
@@ -36,5 +37,5 @@ export default function DeelHelpPage() {
     <p>For help, <Link href="/contact">contact Vanteloq</Link> or email <a href="mailto:support@vanteloq.com">support@vanteloq.com</a>. Include the relevant status or error code. Do not send passwords, tokens or worker payroll records.</p>
     <p><Link href="/privacy">Vanteloq Privacy Policy</Link> · <Link href="/terms">Terms</Link> · <Link href="/privacy#retention">Retention policy</Link> · <a href="https://www.deel.com/privacy/">Deel Privacy Policy</a></p>
     <p><Link href="/help">Back to the help centre</Link></p>
-  </main></div>;
+  </main></PublicSurface>;
 }

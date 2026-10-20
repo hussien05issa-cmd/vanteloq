@@ -1,3 +1,4 @@
+import PublicSurface from "../public-surface";
 /* eslint-disable @next/next/no-img-element */
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -14,7 +15,7 @@ export const metadata: Metadata = {
 };
 
 export default function SocialHubPage() {
-  return <div className="social-hub">
+  return <PublicSurface className="social-hub">
     <a className="social-hub-skip" href="#social-channels">Skip to Social Channels</a>
     <div className="social-hub-wrap">
       <header className="social-hub-nav">
@@ -48,5 +49,5 @@ export default function SocialHubPage() {
       </main>
       <footer className="social-hub-footer"><div><strong>Vanteloq Inc.</strong><p>Business clarity. Practical systems. Better decisions.</p></div><nav aria-label="Social page footer"><Link href="/contact">Contact</Link><Link href="/privacy">Privacy</Link><Link href="/">Home</Link></nav></footer>
     </div>
-  </div>;
+  </PublicSurface>;
 }

@@ -1,3 +1,4 @@
+import PublicSurface from "../public-surface";
 import type { Metadata } from "next";
 import PublicPageNav from "../public-page-nav";
 import CustomPlanForm from "../custom-plan-form";
@@ -9,10 +10,10 @@ export const metadata: Metadata = {
 };
 
 export default function BookDemoPage() {
-  return <div className="public-site demo-page"><PublicPageNav/>
+  return <PublicSurface className="demo-page"><PublicPageNav/>
     <main className="custom-plan-page book-demo-page">
       <section className="custom-plan-intro"><p className="demo-eyebrow">FREE VANTELOQ DEMO</p><h1>See how Vanteloq fits your business.</h1><p>Tell us about your business, your current systems and the questions you want to explore. Our team will review your request and contact you to arrange a demo.</p><ul><li>Explore business reporting and the workflows that matter to you.</li><li>Discuss your current POS, data and integration requirements.</li><li>Ask questions and review whether Vanteloq fits your needs.</li></ul><p className="custom-plan-hint">$0, no obligation and no card required. Sending this request starts a scheduling conversation. Your appointment is confirmed when we agree on a time with you.</p></section>
       <section className="custom-plan-card" aria-label="Free demo request form"><CustomPlanForm purpose="demo"/></section>
     </main>
-  </div>;
+  </PublicSurface>;
 }

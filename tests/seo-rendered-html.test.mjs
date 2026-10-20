@@ -108,7 +108,10 @@ test("new analytics and bookkeeping guides render their metadata, heroes, and sc
     assert.match(text, new RegExp(`<h1>${guide.title}<\\/h1>`));
     assert.ok(text.includes(guide.hero), `${guide.path} should render its editorial hero`);
     assert.ok(text.includes(guide.alt), `${guide.path} should render descriptive hero text`);
-    assert.match(text, new RegExp(`"image":"https://vanteloq\\.com/brand/${guide.hero.replace(".", "\\.")}"`));
+    const schema = [...text.matchAll(/<script type="application\/ld\+json">(.*?)<\/script>/g)].map(match => JSON.parse(match[1])).find(item => item["@type"] === "Article");
+    const searchImage = guide.hero.endsWith(".svg") ? "glass-2026-10-12/vanteloq.jpg" : guide.hero;
+    assert.equal(schema.image.url, `https://vanteloq.com/brand/${searchImage}`);
+    assert.ok(schema.image.width >= 1200);
     const sectionIds = [...text.matchAll(/<section id="([^"]+)"/g)].map((match) => match[1]);
     assert.equal(new Set(sectionIds).size, sectionIds.length, `${guide.path} section ids should be unique`);
     assert.doesNotMatch(text, /\u2014/u);

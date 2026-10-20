@@ -6,17 +6,20 @@ import WorkspaceSkeleton from "./workspace-skeleton";
 import CustomPlanCallout from "./custom-plan-callout";
 import BillingSubscriptionControls, { BillingStatusRecovery } from "./billing-subscription-controls";
 import { billingRequestMessage } from "../domain/billing-feedback";
-import { filterSettingsSections, SETTINGS_SECTIONS, settingsSectionFromHash, settingsSectionHash, type SettingsSectionId } from "../domain/settings-navigation";
+import { filterSettingsSections, settingsSections, settingsSectionFromHash, settingsSectionHash, type SettingsSectionId } from "../domain/settings-navigation";
+import { usePersonalAdminEligibility } from "./personal-admin-access";
 import LocationSetupDialog from "./location-setup-dialog";
 import { useBillingEntitlements } from "./billing-entitlements-context";
 import { readPlanSelection, clearPlanSelection } from "../shared/plan-selection";
 
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { FormEvent, type ReactNode, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch, getSupabase } from "./supabase-browser";
 import { humanizeIdentifier } from "../domain/display-labels";
 import { FieldLabel, FormInput, FormLegend } from "./form-primitives";
+
+const PersonalBusinessLab = lazy(() => import("./personal-admin-lab"));
 
 type Permission = {
   key: string;
@@ -1040,6 +1043,7 @@ function AccessSafeguards({ security }: { security: Governance["security"] }) {
 
 export function SettingsWorkspace({ showNotice, onBrandChange, navigationSettings }: Props) {
   const { data, setData, loading, error, load } = useGovernance();
+  const personalAdmin = usePersonalAdminEligibility(data?.account.email ?? "");
   const access = useBillingEntitlements();
   const [settingsQuery, setSettingsQuery] = useState("");
   const settingsNav = useRef<HTMLElement>(null);
@@ -1054,7 +1058,7 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
   const [saveError, setSaveError] = useState("");
   if (loading || !data)
     return <Loading error={error} retry={() => void load()} />;
-  const sections = filterSettingsSections(settingsQuery);
+  const sections = filterSettingsSections(settingsQuery, personalAdmin.allowed);
   const selectSection = (id: SettingsSectionId) => {
     setSection(id);
     setSaveError("");
@@ -1103,8 +1107,9 @@ export function SettingsWorkspace({ showNotice, onBrandChange, navigationSetting
             </button>
           ))}
         </aside>
-        <section ref={settingsContent} tabIndex={-1} className="settings-content card" aria-label={`${SETTINGS_SECTIONS.find(item => item.id === section)?.label ?? "Business"} settings`}>
+        <section ref={settingsContent} tabIndex={-1} className="settings-content card" aria-label={`${settingsSections(personalAdmin.allowed).find(item => item.id === section)?.label ?? "Business"} settings`}>
           {saveError && <p className="form-error" role="alert">{saveError} Your entries are still here. Review the message and try again.</p>}
+          {section === "personal-admin" && (personalAdmin.allowed ? <Suspense fallback={<WorkspaceSkeleton label="Preparing your personal lab"/>}><PersonalBusinessLab/></Suspense> : <p role="status">{personalAdmin.checking ? "Checking personal admin access…" : "Personal admin is unavailable for this account or session."}</p>)}
           {section === "profile" && (
             <ProfileSettings
               data={data}

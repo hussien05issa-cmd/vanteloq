@@ -62,7 +62,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "how-to-track-inventory-small-business",
     title: "How to Track Inventory for a Small Business",
-    seoTitle: "How to Track Inventory for a Small Business: A Practical System",
+    seoTitle: "How to Track Inventory for a Small Business | Vanteloq",
     description: "Learn a practical small-business inventory tracking system covering SKU records, stock movements, cycle counts, reorder inputs and common accuracy problems.",
     dek: "A reliable inventory system is a repeatable record of what came in, what went out, what remains and why the quantity changed.",
     quickAnswer: "Start with one record per SKU and location, record every receipt, sale, return, transfer and adjustment, then verify the records with regular physical counts. Track quantity on hand, available quantity, unit cost, reorder inputs and the timestamp of the last verified count. The system matters more than the software: every stock change needs a source and an owner.",
@@ -314,7 +314,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "what-should-small-business-dashboard-show",
     title: "What Should a Small Business Dashboard Show?",
-    seoTitle: "What Should a Small Business Dashboard Show? Practical Guide",
+    seoTitle: "Small Business Dashboard KPIs: What to Track | Vanteloq",
     description: "Learn which sales, margin, cash, inventory and operations measures belong on a useful small-business dashboard, plus the context each metric needs.",
     dek: "A useful dashboard is not a wall of charts. It is a short, consistent view of current performance, important changes, data limits and the decisions that need attention.",
     quickAnswer: "Start with a small executive snapshot: net sales, transactions, average basket, gross profit and gross margin when cost coverage is reliable, current cash with known obligations, inventory value and risk, and open operational exceptions. Every metric should show its period, comparison, source and freshness. Add product, location or channel detail only when it helps explain a change or supports an action.",
@@ -492,7 +492,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "how-to-analyze-business-data-for-growth",
     title: "How to Analyze Business Data for Sustainable Growth",
-    seoTitle: "How to Analyze Business Data for Sustainable Growth",
+    seoTitle: "Business Data Analysis for Growth: A Practical Guide | Vanteloq",
     description: "Learn how to analyze sales, margin, cash, inventory and marketing data, test growth decisions, and scale a small business without losing control.",
     dek: "Sustainable growth comes from a repeatable decision loop: define the question, verify the inputs, explain the change, test one action and review the result against operational limits.",
     quickAnswer: "Begin with one decision, not a collection of charts. Compare a clearly defined metric with an equivalent period, then split the change into its likely drivers. Check whether margin, cash, inventory, staffing and location capacity can support the next action. Run a bounded test with a primary measure, a guardrail and a review date. Keep provider-attributed marketing results separate from verified sales and record what the evidence can and cannot prove.",
@@ -654,7 +654,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "data-analytics-for-small-business",
     title: "Data Analytics for Small Business: A Practical Guide",
-    seoTitle: "Data Analytics for Small Business: A Practical Guide",
+    seoTitle: "Data Analytics for Small Business: A Practical Guide | Vanteloq",
     description: "Learn how to use data analytics in a small business to improve sales, margin, inventory, cash flow and daily decisions with a practical, trusted process.",
     dek: "Small business data analytics turns everyday operating records into clear questions, reliable measures and accountable actions. The goal is not more charts. It is better evidence for the next decision.",
     quickAnswer: "Data analytics for small business begins with a decision that matters, such as what to reorder, where margin changed or whether cash can support a purchase. Identify the source records needed to answer that question, reconcile them, define each metric and compare equivalent periods. Use descriptive analysis to show what happened, diagnostic analysis to investigate why, and carefully tested forecasts to estimate what may happen next. Keep source, freshness, scope and uncertainty visible. Protect personal information, separate platform attribution from verified business outcomes, and assign every material finding to an owner with a review date. A simple weekly routine built on trusted data is more useful than a complex dashboard nobody can explain.",
@@ -892,7 +892,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "small-business-bookkeeping-system",
     title: "A Practical Bookkeeping System for a Small Business",
-    seoTitle: "A Practical Bookkeeping System for a Small Business",
+    seoTitle: "Small Business Bookkeeping System: A Practical Guide | Vanteloq",
     description: "Build a reliable small-business bookkeeping system with source documents, bank reconciliation, month-end controls and an accountant-ready review process.",
     dek: "Reliable books come from a disciplined evidence, review, reconciliation and close routine. Software can reduce the work, but it cannot turn an unsupported transaction into an accounting conclusion.",
     quickAnswer: "Keep the original invoice, receipt or statement for every material entry, record who paid or was paid, categorize the transaction under a documented policy, and reconcile bank, card, merchant and POS clearing balances regularly. Close each month only after unexplained differences, duplicate records and missing evidence are resolved or assigned. Preserve corrections through review and reversal instead of silently replacing history, then export an accountant-ready package with the source documents and open questions.",
@@ -1047,7 +1047,7 @@ const articles: readonly ResourceArticle[] = [
   {
     slug: "small-business-cash-flow-management-guide",
     title: "Small-Business Cash Flow: A Practical Control and Forecasting Guide",
-    seoTitle: "Small-Business Cash Flow Management and Forecasting Guide",
+    seoTitle: "Small Business Cash Flow Management & Forecasting | Vanteloq",
     description: "Learn how to build a source-backed cash-flow statement, 13-week forecast, category budget and receipt-review routine without confusing profit with cash.",
     dek: "Cash control is not a single bank balance. It is a repeatable view of opening cash, categorized inflows and outflows, committed obligations, expected receipts, budget pressure and the evidence behind each number.",
     quickAnswer: "Start with a verified opening balance. Record cash inflows and outflows by category, reconcile them to source records, and calculate closing cash as opening cash plus inflows minus outflows. Build a rolling 13-week direct forecast that keeps confirmed obligations separate from expected receipts. Compare actual plus committed spend with the approved category budget, preserve receipts and invoices, and review forecast error every period instead of treating a prediction as a fact.",

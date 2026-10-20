@@ -1,0 +1,272 @@
+/* Only subsidiary public pages opt in. Homepage and signed-in workspaces keep
+   their own surfaces and component rules. */
+.public-site.public-surface {
+  --surface-canvas: #050608;
+  --surface-panel: #10151e;
+  --surface-raised: #192232;
+  --surface-ink: #f5f7fb;
+  --surface-muted: #bac6d8;
+  --surface-subtle: #a2b1c6;
+  --surface-line: #62738d;
+  --surface-link: #8ebeff;
+  --surface-primary: #1d60dc;
+  --surface-primary-hover: #174fb8;
+  --surface-focus: #a2ceff;
+  --surface-tint: #12233a;
+  --surface-success: #98dfc0;
+  --surface-success-bg: #112c25;
+  --surface-warning: #f3cf8d;
+  --surface-warning-bg: #2c2417;
+  --surface-error: #ffb5b9;
+  --surface-error-bg: #351c24;
+  --surface-shadow: 0 12px 32px #00000014;
+  --vql-ink: var(--surface-ink);
+  --vql-muted: var(--surface-muted);
+  --vql-subtle: var(--surface-subtle);
+  --vql-line: var(--surface-line);
+  --vql-line-soft: var(--surface-line);
+  --vql-blue-700: var(--surface-link);
+  --vql-shadow: var(--surface-shadow);
+  --ui-canvas: var(--surface-canvas);
+  --ui-surface: var(--surface-panel);
+  --ui-ink: var(--surface-ink);
+  --ui-muted: var(--surface-muted);
+  --ui-line: var(--surface-line);
+  --ui-glass: var(--surface-panel);
+  --demo-ink: var(--surface-ink);
+  --demo-muted: var(--surface-muted);
+  --demo-line: var(--surface-line);
+  --hp-ink: var(--surface-ink);
+  --hp-muted: var(--surface-muted);
+  --hp-blue: var(--surface-link);
+  --social-navy: var(--surface-ink);
+  --social-muted: var(--surface-muted);
+  --social-blue: var(--surface-link);
+  min-height: 100dvh;
+  color-scheme: dark;
+  color: var(--surface-ink);
+  background: var(--surface-canvas);
+  font-family: var(--font-product, "Vanteloq Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+}
+.public-site.public-surface[data-public-theme="light"] {
+  --surface-canvas: #f7f9fd;
+  --surface-panel: #ffffff;
+  --surface-raised: #eaf1fa;
+  --surface-ink: #111d33;
+  --surface-muted: #455570;
+  --surface-subtle: #53647d;
+  --surface-line: #71839e;
+  --surface-link: #164fba;
+  --surface-focus: #1557d0;
+  --surface-tint: #edf3fc;
+  --surface-success: #166149;
+  --surface-success-bg: #e9f6ef;
+  --surface-warning: #754b0c;
+  --surface-warning-bg: #fff5df;
+  --surface-error: #9a2534;
+  --surface-error-bg: #fff0f2;
+  --surface-shadow: 0 12px 32px #14263d08;
+  color-scheme: light;
+}
+.public-site.public-surface * { box-sizing: border-box; }
+.public-site.public-surface :is(h1,h2,h3,h4,h5,strong,b,summary,output) { color: var(--surface-ink); }
+.public-site.public-surface :is(p,li,small,dt,dd,label) { color: var(--surface-muted); }
+.public-site.public-surface a { color: var(--surface-link); text-underline-offset: .2em; }
+.public-site.public-surface :is(a,button,input,select,textarea,summary,[tabindex]):focus-visible { outline: 3px solid var(--surface-focus); outline-offset: 4px; }
+.public-site.public-surface :is(input,select,textarea) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .custom-plan-form :is(input:not([type="checkbox"]),select,textarea) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface :is(input,textarea)::placeholder { color: var(--surface-subtle); opacity: 1; }
+.public-site.public-surface :is(input[type="checkbox"],input[type="radio"],input[type="range"]) { accent-color: var(--surface-primary); }
+
+/* Shared navigation remains in the same place and keeps the same actions. */
+.public-site.public-surface .public-shell-nav,
+.public-site.public-surface :is(.public-shell-resources,.public-shell-links.is-open) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .public-shell-nav :is(a,button,summary),
+.public-site.public-surface .public-shell-brand { color: var(--surface-ink); }
+.public-site.public-surface .public-shell-nav :is(a,summary):hover { color: var(--surface-link); }
+.public-site.public-surface :is(.public-shell-resources a:hover,.public-shell-menu) { color: var(--surface-ink); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface .public-shell-free { color: #fff !important; background: var(--surface-primary); }
+.public-site.public-surface .public-shell-links > .public-demo-link { color: var(--surface-ink); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface .public-shell-links > .public-demo-link:is(:hover,:focus-visible) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-link); }
+.public-site.public-surface .public-shell-footer { background: var(--surface-panel); color: var(--surface-muted); border-top: 1px solid var(--surface-line); }
+.public-site.public-surface .public-shell-footer :is(a,p,span) { color: var(--surface-muted); }
+.public-site.public-surface .public-shell-footer strong { color: var(--surface-ink); }
+.public-site.public-surface :is(.public-shell-footer-bottom,.public-shell-mobile-account) { border-color: var(--surface-line); }
+
+/* Legal documents: quiet document surfaces, rather than decorative analytics. */
+.public-site.public-surface :is(.legal-header,.legal-footer) { background: var(--surface-panel); color: var(--surface-ink); border-color: var(--surface-line); }
+.public-site.public-surface :is(.legal-brand .product-brand-logo,.legal-home-link,.legal-index,.legal-hero dl div,.legal-footer p) { border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface .legal-header nav { color: var(--surface-muted); }
+.public-site.public-surface .legal-hero { background: var(--surface-canvas); border-color: var(--surface-line); }
+.public-site.public-surface .legal-hero > div > span { color: var(--surface-muted); }
+.public-site.public-surface :is(.legal-hero > div > p,.legal-index strong,.legal-card-grid small) { color: var(--surface-link); }
+.public-site.public-surface .legal-hero > aside { background: var(--surface-panel); border-color: var(--surface-line); border-radius: 20px; box-shadow: var(--surface-shadow); }
+.public-site.public-surface .legal-document-mark { display: grid; width: 56px; height: 56px; place-items: center; border: 1px solid var(--surface-line); border-radius: 16px; color: var(--surface-link); background: var(--surface-tint); }
+.public-site.public-surface .legal-document-mark svg { width: 28px; height: 28px; }
+.public-site.public-surface :is(.legal-document,.legal-index) { color: var(--surface-muted); }
+.public-site.public-surface .legal-note { color: var(--surface-muted); background: var(--surface-tint); border-color: var(--surface-line); border-left-color: var(--surface-link); }
+.public-site.public-surface .legal-card-grid a { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); border-radius: 18px; box-shadow: none; }
+.public-site.public-surface .legal-card-grid a::after { content: none; }
+.public-site.public-surface .legal-card-grid a:hover { border-color: var(--surface-link); transform: none; }
+.public-site.public-surface .legal-card-grid span { color: var(--surface-muted); }
+.public-site.public-surface :is(.legal-table,.legal-table td,.legal-table th) { border-color: var(--surface-line); }
+.public-site.public-surface .legal-table table { background: var(--surface-panel); }
+.public-site.public-surface .legal-table th { color: var(--surface-ink); background: var(--surface-raised); }
+.public-site.public-surface :is(.legal-header a,.legal-footer a) { min-height: 44px; display: inline-flex; align-items: center; }
+.public-site.public-surface .legal-index a { min-height: 36px; display: inline-flex; align-items: center; }
+
+/* Resources retain the editorial layout and all article and formula content. */
+.public-site.public-surface :is(.resource-header,.resource-footer,.resource-mobile-menu nav) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .resource-header nav { color: var(--surface-muted); }
+.public-site.public-surface :is(.resource-mobile-menu summary,.resource-mobile-menu nav a) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .resource-mobile-menu nav a:hover { background: var(--surface-raised); }
+.public-site.public-surface :is(.resource-hero,.category-hero,.resource-method) { background: var(--surface-canvas); border-color: var(--surface-line); }
+.public-site.public-surface :is(.resource-hero aside,.resource-category-grid > a,.resource-card,.resource-empty,.quick-answer,.formula-card,.article-disclaimer) { background: var(--surface-panel); color: var(--surface-ink); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface.resource-site .article-body > section.quick-answer { background: var(--surface-panel); border-color: var(--surface-line); border-left-color: var(--surface-link); }
+.public-site.public-surface :is(.resource-hero aside figure,.resource-hero aside figcaption,.resource-method-copy figure) { background: var(--surface-raised); border-color: var(--surface-line); color: var(--surface-muted); box-shadow: none; }
+.public-site.public-surface :is(.resource-category-grid,.resource-method ol,.resource-method li,.article-toc,.article-byline > div,.article-body > section,.article-sources,.article-sources li) { border-color: var(--surface-line); }
+.public-site.public-surface .resource-card.featured { background: var(--surface-panel); border-color: var(--surface-line); color: var(--surface-ink); }
+.public-site.public-surface .resource-card.featured :is(p,.resource-card-meta) { color: var(--surface-muted); }
+.public-site.public-surface :is(.resource-card-meta a,.resource-card.featured .resource-card-meta a,.resource-card-link,.resource-card.featured .resource-card-link) { color: var(--surface-link) !important; }
+.public-site.public-surface :is(.resource-category-grid > a:hover,.resource-card:hover) { box-shadow: none; border-color: var(--surface-link); }
+.public-site.public-surface :is(.resource-card-image,.article-hero-image) { border-color: var(--surface-line); background: var(--surface-raised); }
+.public-site.public-surface :is(.resource-wide-cta,.resource-wide-cta p,.resource-wide-cta h2) { color: var(--surface-ink); background: var(--surface-panel); }
+.public-site.public-surface .resource-wide-cta { border: 1px solid var(--surface-line); border-radius: 20px; }
+.public-site.public-surface .resource-wide-cta a { color: #fff; background: var(--surface-primary); border-color: var(--surface-primary); }
+.public-site.public-surface .resource-wide-cta a.secondary { color: var(--surface-ink); background: transparent; border-color: var(--surface-line); }
+.public-site.public-surface .resource-header-cta { background: var(--surface-primary); color: #fff !important; border-radius: 12px; }
+.public-site.public-surface :is(.resource-header-signin,.resource-footer nav,.article-dek,.article-byline dd,.article-body,.article-body li) { color: var(--surface-muted); }
+.public-site.public-surface .article-callout { color: var(--surface-warning); background: var(--surface-warning-bg); border-color: var(--surface-warning); }
+.public-site.public-surface .article-callout :is(p,strong) { color: var(--surface-warning); }
+.public-site.public-surface :is(.article-table-wrap,.article-table-wrap th,.article-table-wrap td) { border-color: var(--surface-line); }
+.public-site.public-surface .article-table-wrap table { background: var(--surface-panel); color: var(--surface-muted); }
+.public-site.public-surface .article-table-wrap :is(caption,thead th) { color: var(--surface-ink); background: var(--surface-raised); }
+.public-site.public-surface #comparison-chart .article-table-wrap :is(caption,thead th,tbody th) { color: var(--surface-ink); background: var(--surface-raised); }
+.public-site.public-surface #comparison-chart .article-table-wrap :is(th,td):nth-child(2) { color: var(--surface-ink); background: var(--surface-tint); border-color: var(--surface-line); }
+.public-site.public-surface #comparison-chart .article-table-wrap tbody tr:hover :is(th,td) { background: var(--surface-raised); }
+.public-site.public-surface #comparison-chart > p:last-of-type { color: var(--surface-link); }
+.public-site.public-surface .resource-visual { color: var(--surface-link); background: var(--surface-tint); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface .resource-visual-label { color: var(--surface-link); }
+.public-site.public-surface .resource-visual-status { color: var(--surface-muted); background: var(--surface-panel); }
+.public-site.public-surface .resource-visual-line { border-color: var(--surface-line); }
+.public-site.public-surface .professor-guide { --guide-ink: var(--surface-ink); --guide-muted: var(--surface-muted); --guide-panel: var(--surface-panel); --guide-line: var(--surface-line); --guide-blue: var(--surface-link); }
+.public-site.public-surface .resource-editorial-cover { width: 100%; overflow: hidden; border: 1px solid var(--surface-line); border-radius: 16px; background: var(--surface-raised); aspect-ratio: 16 / 9; }
+.public-site.public-surface .resource-editorial-cover img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.public-site.public-surface .resource-editorial-cover.compact { margin-top: 18px; border-radius: 10px; }
+.public-site.public-surface .resource-footer nav a { min-height: 44px; display: inline-flex; align-items: center; }
+.public-site.public-surface .resource-article-browser { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface .resource-article-browser > summary { color: var(--surface-ink); background: var(--surface-panel); }
+.public-site.public-surface .resource-article-browser > summary:hover { background: var(--surface-raised); }
+.public-site.public-surface .resource-article-browser > summary strong { color: var(--surface-ink); }
+.public-site.public-surface .resource-article-browser > summary small { color: var(--surface-muted); }
+.public-site.public-surface .resource-article-browser .disclosure-plus { color: var(--surface-link); border-color: var(--surface-line); }
+.public-site.public-surface .resource-article-browser :is(summary,a):focus-visible { outline-color: var(--surface-focus); }
+.public-site.public-surface .resource-article-list { background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .resource-article-list > article { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .resource-article-list h3 a { color: var(--surface-ink); }
+.public-site.public-surface .resource-article-list p { color: var(--surface-muted); }
+.public-site.public-surface .resource-article-meta { color: var(--surface-muted); }
+.public-site.public-surface .resource-article-meta > span:first-child { color: var(--surface-link); }
+.public-site.public-surface .resource-article-list .resource-article-link { color: var(--surface-link); }
+
+/* Product guides, plan selection, demo and inquiry destinations. */
+.public-site.public-surface :is(.product-help,.feature-guide,.custom-plan-page,.product-demo,.bookloq-demo,.finance-proof) { color: var(--surface-ink); }
+.public-site.public-surface .product-demo { --demo-ink: var(--surface-ink); --demo-muted: var(--surface-muted); --demo-line: var(--surface-line); background: var(--surface-canvas); }
+.public-site.public-surface :is(.demo-content,.demo-metric-detail,.demo-evidence-note,.bookloq-demo-detail,.custom-plan-privacy-details) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface :is(.demo-eyebrow,.demo-intro :is(h1,h2) em,.demo-kpis > article > button > em) { color: var(--surface-link); }
+.public-site.public-surface :is(.demo-no-account,.demo-kpis > article > button > span,.demo-insight-heading > span,.demo-range-labels > span) { color: var(--surface-muted); }
+.public-site.public-surface :is(.demo-guided-start button,.demo-metric-detail button,.demo-kpis > article > button) { color: var(--surface-ink); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface .demo-kpis > article > button:hover { background: var(--surface-tint); }
+.public-site.public-surface :is(.demo-records-heading > span,.demo-table-scroll caption,.bookloq-demo caption) { color: var(--surface-muted); }
+.public-site.public-surface :is(.demo-table-scroll th,.bookloq-demo th) { color: var(--surface-muted); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface :is(.demo-table-scroll td,.bookloq-demo td) { color: var(--surface-ink); border-color: var(--surface-line); }
+.public-site.public-surface .demo-workspace-icon { color: var(--surface-link); border-color: var(--surface-line); }
+.public-site.public-surface.pricing-page :is(.plan-fit,.plan-comparison,.public-price-grid,.public-bookloq-price,.pricing-demo-conversion) :is(h1,h2,h3,strong,b,summary) { color: var(--surface-ink); }
+.public-site.public-surface.pricing-page :is(.plan-fit,.plan-comparison,.public-price-grid,.public-bookloq-price,.pricing-demo-conversion) :is(p,small,label,span) { color: var(--surface-muted); }
+.public-site.public-surface.pricing-page .plan-comparison .plan-included { color: var(--surface-success); }
+.public-site.public-surface .book-demo-page :is(.custom-plan-intro > p:not(.demo-eyebrow),.custom-plan-form label,.custom-plan-form .field-label-text,.custom-plan-consent > span,.turnstile-field > span,.turnstile-field > small) { color: var(--surface-muted); }
+.public-site.public-surface .book-demo-page .custom-plan-form :is(input:not([type="checkbox"]),textarea) { color: var(--surface-ink); background: var(--surface-panel); }
+.public-site.public-surface .book-demo-page .custom-plan-privacy-details { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface .book-demo-page .custom-plan-privacy-details :is(summary,p) { color: var(--surface-muted); }
+.public-site.public-surface :is(.product-help > nav a,.product-help-topics section,.feature-guide-question,.custom-plan-form,.custom-plan-success,.custom-plan-cta,.public-price-grid article,.public-free-plan,.public-bookloq-standalone,.public-bookloq-price-options article,.plan-fit,.plan-fit-result,.demo-app,.demo-toolbar,.demo-kpis article,.demo-chart,.demo-insight,.demo-scenario,.demo-records,.demo-formulas,.demo-app-footer,.finance-proof-example,.financial-review-card) { background: var(--surface-panel); color: var(--surface-ink); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface :is(.public-bookloq-price,.plan-table-scroll,.pricing-demo-conversion,.financial-review-card summary) { background: var(--surface-panel); color: var(--surface-ink); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface :is(.plan-fit-result > span,.public-bookloq-price-options article > span,.public-price-grid article > span,.pricing-reassurance,.plan-table-scroll caption,.demo-range-labels,.finance-proof-example > span) { color: var(--surface-muted); border-color: var(--surface-line); }
+.public-site.public-surface :is(.feature-guide li,.feature-guide nav,.help-boundary,.pricing-questions details,.pricing-footer,.demo-page-footer,.demo-pagination,.demo-app-footer,.demo-formulas,.demo-prompts,.demo-table-scroll td,.demo-table-scroll th,.demo-proof-links,.finance-proof-example dl > div) { border-color: var(--surface-line); }
+.public-site.public-surface :is(.demo-app-header,.demo-scenario aside,.demo-conversion) { background: var(--surface-raised); color: var(--surface-ink); border-color: var(--surface-line); }
+.public-site.public-surface :is(.demo-app-header small,.demo-sample-label,.demo-scenario aside p,.demo-scenario aside small,.demo-scenario aside dt,.demo-conversion p) { color: var(--surface-muted); }
+.public-site.public-surface :is(.demo-quality,.custom-plan-success > span) { color: var(--surface-success); background: var(--surface-success-bg); border-color: var(--surface-success); }
+.public-site.public-surface :is(.demo-quality.limited,.demo-records .missing-value) { color: var(--surface-warning); background: var(--surface-warning-bg); border-color: var(--surface-warning); }
+.public-site.public-surface .custom-plan-error { color: var(--surface-error); background: var(--surface-error-bg); }
+.public-site.public-surface .custom-plan-form .custom-plan-error { color: var(--surface-error); }
+.public-site.public-surface :is(.demo-table-scroll thead,.plan-table-scroll thead,.plan-table-scroll th,.demo-scenario-badge,.demo-app button,.plan-fit button) { background: var(--surface-raised); color: var(--surface-ink); border-color: var(--surface-line); }
+.public-site.public-surface :is(.demo-view-switch button[aria-pressed="true"],.plan-fit button[aria-pressed="true"]) { background: var(--surface-tint); border-color: var(--surface-link); color: var(--surface-link); }
+.public-site.public-surface :is(.plan-table-scroll,.plan-table-scroll td,.plan-table-scroll th,.public-price-grid article,.public-price-grid article ul,.public-bookloq-price-options article) { border-color: var(--surface-line); }
+.public-site.public-surface :is(.plan-table-scroll tbody tr,.plan-table-scroll tbody td) { background: var(--surface-panel); color: var(--surface-muted); }
+.public-site.public-surface :is(.public-price-grid article > a,.public-free-plan aside > a,.public-bookloq-standalone aside > a,.public-bookloq-price-options article > a,.custom-plan-form button,.custom-plan-success > a,.demo-conversion a:first-of-type) { background: var(--surface-primary); border-color: var(--surface-primary); color: #fff; }
+.public-site.public-surface .public-bookloq-price-options .bookloq-addon-action { background: transparent; color: var(--surface-link); border-color: var(--surface-line); }
+.public-site.public-surface .plan-included,
+.public-site.public-surface .pricing-reassurance span::before { color: var(--surface-success); }
+.public-site.public-surface .plan-not-included { color: var(--surface-subtle); }
+.public-site.public-surface :is(.demo-bars small,.demo-chart header > span,.demo-formulas small,.demo-prompts .demo-suggestions-toggle,.custom-plan-form label span,.custom-plan-hint) { color: var(--surface-subtle); }
+.public-site.public-surface .demo-app :is(button,select) { min-height: 44px; }
+.public-site.public-surface .retail-intelligence { --ri-ink: var(--surface-ink); --ri-muted: var(--surface-muted); --ri-border: var(--surface-line); --ri-blue: var(--surface-link); color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface :is(.retail-heading,.retail-kpi,.retail-evidence,.retail-table-wrap caption,.retail-table-wrap thead th,.retail-score,.retail-opportunity,.retail-empty,.retail-footer,.retail-inputs,.retail-inputs-preview,.retail-ai-period,.retail-hour-detail,.home-retail-next) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface :is(.retail-intelligence button,.retail-inputs button,.retail-demo-scenario button) { color: var(--surface-ink); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface :is(.retail-tabs button[aria-pressed="true"],.retail-segment button[aria-pressed="true"],.retail-demo-scenario button[aria-pressed="true"],.retail-hour-chart > button[aria-pressed="true"]) { color: var(--surface-link); background: var(--surface-tint); border-color: var(--surface-link); }
+.public-site.public-surface .retail-hour-chart > button { background: transparent; }
+.public-site.public-surface :is(.retail-kpi > span,.retail-demo-scenario,.retail-table-wrap caption,.retail-table-wrap th,.retail-table-wrap td,.retail-hour-chart small,.retail-hour-chart .retail-hour-missing) { color: var(--surface-muted); border-color: var(--surface-line); }
+.public-site.public-surface :is(.retail-quality-notice,.financial-review-card[data-status="needs_review"]) { color: var(--surface-warning); background: var(--surface-warning-bg); border-color: var(--surface-warning); }
+.public-site.public-surface .retail-error { color: var(--surface-error) !important; background: var(--surface-error-bg); }
+.public-site.public-surface .financial-review-checks > div { border-color: var(--surface-line); }
+.public-site.public-surface .financial-review-checks strong[data-status="balanced"] { color: var(--surface-success); }
+.public-site.public-surface .financial-review-checks strong[data-status="needs_review"] { color: var(--surface-warning); }
+.public-site.public-surface .finance-chart { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface[data-public-theme="dark"] .finance-chart { --chart-blue: #8ebeff; --chart-mint: #98dfc0; --chart-coral: #ffb5b9; --chart-violet: #c5b6ff; }
+.public-site.public-surface :is(.finance-chart-currency,.finance-chart-readout,.finance-chart-data table,.finance-chart-data > button) { color: var(--surface-ink); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface .finance-chart svg { background: var(--surface-panel); }
+.public-site.public-surface .finance-chart-axis { fill: var(--surface-muted); }
+.public-site.public-surface :is(.finance-chart-grid,.finance-chart-zero,.finance-chart-cursor) { stroke: var(--surface-line); }
+.public-site.public-surface .finance-chart-data :is(th,td) { color: var(--surface-muted); border-color: var(--surface-line); }
+
+/* The retail walkthrough keeps its existing composition and working controls. */
+.public-site.public-surface.hp-site { background: var(--surface-canvas); }
+.public-site.public-surface.hp-site :is(.hp-hero,.hp-section,.hp-final) { background: var(--surface-canvas); }
+.public-site.public-surface.hp-site :is(.hp-product-window,.hp-window-title,.hp-question-proof,.hp-questions article,.hp-source-example,.hp-fit-panel,.hp-ai-example,.hp-ai-answer,.hp-connection-directory,.hp-free-card,.hp-workflow-evidence,.hp-workflow-steps button) { background: var(--surface-panel); color: var(--surface-ink); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface.hp-site :is(.hp-environment,.hp-metrics > div,.hp-source-flow span,.hp-source-flow strong,.hp-status,.hp-story-controls .hp-play-control,.hp-secondary,.hp-skip) { color: var(--surface-ink); background: var(--surface-raised); border-color: var(--surface-line); }
+.public-site.public-surface.hp-site :is(.hp-window-title > span,.hp-chart-title > span,.hp-finding > span,.hp-card-kicker,.hp-available > div > span) { color: var(--surface-muted); }
+.public-site.public-surface.hp-site .hp-story-controls button { color: var(--surface-muted); }
+.public-site.public-surface.hp-site .hp-story-controls button[aria-pressed="true"] { color: var(--surface-link); background: var(--surface-tint); border-color: var(--surface-link); }
+.public-site.public-surface.hp-site :is(.hp-selector button,.hp-ai-questions button,.hp-inline-button) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); }
+.public-site.public-surface.hp-site :is(.hp-selector button[aria-pressed="true"],.hp-ai-questions button[aria-pressed="true"]) { color: var(--surface-link); background: var(--surface-tint); border-color: var(--surface-link); }
+.public-site.public-surface.hp-site :is(.hp-paid-summary > div,.hp-faq details,.hp-trust,.hp-workflow,.hp-proof-detail,.hp-bridge) { border-color: var(--surface-line); }
+.public-site.public-surface.hp-site .hp-primary { color: #fff; background: var(--surface-primary); border-color: var(--surface-primary); }
+.public-site.public-surface.hp-site :is(.hp-secondary,.hp-paid-summary > p strong) { color: var(--surface-ink); border-color: var(--surface-line); }
+
+/* Social channel identities and scannable QR codes retain their real artwork. */
+.public-site.public-surface.social-hub { background: var(--surface-canvas); }
+.public-site.public-surface.social-hub::before { display: none; }
+.public-site.public-surface.social-hub :is(.social-hub-home,.social-hub-banner,.social-hub-card,.social-hub-float,.social-hub-orb) { color: var(--surface-ink); background: var(--surface-panel); border-color: var(--surface-line); box-shadow: none; }
+.public-site.public-surface.social-hub .social-hub-hero h1 span { color: var(--surface-link); background: none; -webkit-text-fill-color: currentColor; }
+.public-site.public-surface.social-hub .social-hub-cta { color: var(--surface-ink); background: var(--surface-panel); border: 1px solid var(--surface-line); box-shadow: none; }
+.public-site.public-surface.social-hub :is(.social-hub-follow,.social-hub-explore) { color: #fff; background: var(--surface-primary); box-shadow: none; }
+.public-site.public-surface.social-hub .social-hub-follow:hover { color: #fff; background: var(--surface-primary-hover); }
+.public-site.public-surface.social-hub :is(.social-hub-footer,.social-hub-skip) { color: var(--surface-muted); background: var(--surface-canvas); border-color: var(--surface-line); }
+.public-site.public-surface.social-hub .social-hub-float { animation: none; rotate: none; }
+.public-site.public-surface.social-hub .social-hub-card:hover { transform: none; box-shadow: none; }
+
+@media (max-width: 1100px) {
+  .public-site.public-surface .resource-header { gap: 16px; flex-wrap: wrap; padding-block: 12px; }
+  .public-site.public-surface .resource-header > nav { display: none; }
+  .public-site.public-surface .resource-mobile-menu { display: block; margin-left: auto; }
+}
+@media (max-width: 640px) {
+  .public-site.public-surface .resource-header { padding-inline: 16px; }
+  .public-site.public-surface .resource-header-actions { width: 100%; justify-content: space-between; }
+  .public-site.public-surface .resource-header-cta { justify-content: center; }
+  .public-site.public-surface .legal-index a { min-height: 44px; }
+  .public-site.public-surface .legal-home-link { max-width: 135px; line-height: 1.4; text-align: center; }
+  .public-site.public-surface .resource-wide-cta { margin-inline: 16px; padding: 24px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .public-site.public-surface :is(.resource-card-image img,.legal-card-grid a,.social-hub-card,.social-hub-orb,.social-hub-follow) { transition: none; }
+}

@@ -3,12 +3,14 @@ import Link from "next/link";
 import { ResourceShell, ResourceVisual } from "./components";
 import ResourceArticleBrowser from "../resource-article-browser";
 import { RESOURCE_ARTICLES, RESOURCE_CATEGORIES, getArticlesByCategory } from "./content";
-import { DEFAULT_SOCIAL_IMAGE } from "../seo";
+import { DEFAULT_SOCIAL_IMAGE, safeJsonLd } from "../seo";
+import { resourceCollectionJsonLd, RESOURCE_SEARCH_ROBOTS } from "./search";
 
 export const metadata: Metadata = {
   title: "Small Business Operations Resources | Vanteloq",
   description: "Practical guides to inventory, business analytics, finance, POS data, marketing measurement, operations and responsible AI for small businesses.",
-  alternates: { canonical: "/resources" },
+  alternates: { canonical: "/resources", types: { "application/rss+xml": "/resources/feed.xml" } },
+  robots: RESOURCE_SEARCH_ROBOTS,
   openGraph: {
     type: "website",
     url: "/resources",
@@ -30,6 +32,7 @@ export default function ResourcesPage() {
   return (
     <ResourceShell>
       <main>
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(resourceCollectionJsonLd("/resources", "Vanteloq Business Resource Library", "Practical guides to inventory, business analytics, finance, marketing and operations for small businesses.", RESOURCE_ARTICLES)) }} />
         <section className="resource-hero">
           <div>
             <p className="resource-eyebrow">VANTELOQ FIELD GUIDES</p>

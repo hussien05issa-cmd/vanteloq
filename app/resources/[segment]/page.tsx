@@ -14,7 +14,8 @@ import {
   getReadingTime,
   type ResourceArticle,
 } from "../content";
-import { absoluteUrl, DEFAULT_SOCIAL_IMAGE, safeJsonLd } from "../../seo";
+import { absoluteUrl, safeJsonLd } from "../../seo";
+import { articleSearchImage, resourceCollectionJsonLd, RESOURCE_SEARCH_ROBOTS } from "../search";
 
 type SegmentProps = { params: Promise<{ segment: string }> };
 
@@ -31,17 +32,13 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
   if (article) {
     const url = `/resources/${article.slug}`;
     const authorUrl = articleAuthorUrl(article);
-    const socialImage = article.hero && !/\.svg(?:[?#]|$)/i.test(article.hero.src) ? article.hero : {
-      src: DEFAULT_SOCIAL_IMAGE,
-      alt: "Vanteloq glass blue and silver logo",
-      width: 1254,
-      height: 1254,
-    };
+    const socialImage = articleSearchImage(article);
     return {
       title: article.seoTitle,
       description: article.description,
       authors: [{ name: article.author, url: authorUrl }],
       alternates: { canonical: url },
+      robots: RESOURCE_SEARCH_ROBOTS,
       openGraph: {
         type: "article",
         url,
@@ -69,7 +66,7 @@ export async function generateMetadata({ params }: SegmentProps): Promise<Metada
       title,
       description: category.description,
       alternates: { canonical: `/resources/${category.slug}` },
-      ...(getArticlesByCategory(category.slug).length === 0 ? { robots: { index: false, follow: true } } : {}),
+      robots: getArticlesByCategory(category.slug).length === 0 ? { index: false, follow: true } : RESOURCE_SEARCH_ROBOTS,
       openGraph: { type: "website", url: `/resources/${category.slug}`, title, description: category.description },
       twitter: { card: "summary", title, description: category.description },
     };
@@ -96,6 +93,7 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
   const related = article.related.map(getArticle).filter((item): item is ResourceArticle => Boolean(item));
   const articleUrl = absoluteUrl(`/resources/${article.slug}`);
   const authorUrl = articleAuthorUrl(article);
+  const searchImage = articleSearchImage(article);
   const isAdvisoryGuide = ADVISORY_RESOURCE_ARTICLES.some((item) => item.slug === article.slug);
   const articleJsonLd = {
     "@context": "https://schema.org",
@@ -107,7 +105,10 @@ function ArticlePage({ article }: { article: ResourceArticle }) {
     datePublished: article.published,
     dateModified: article.updated,
     articleSection: category?.name,
-    image: absoluteUrl(article.hero?.src ?? DEFAULT_SOCIAL_IMAGE),
+    image: { "@type": "ImageObject", url: absoluteUrl(searchImage.src), width: searchImage.width, height: searchImage.height },
+    inLanguage: "en-CA",
+    isAccessibleForFree: true,
+    isPartOf: { "@id": absoluteUrl("/resources#webpage") },
     author: article.author === "Hussien Issa"
       ? { "@type": "Person", name: article.author, url: authorUrl }
       : { "@type": "Organization", name: article.author, url: authorUrl },
@@ -245,6 +246,7 @@ function CategoryPage({ categorySlug }: { categorySlug: string }) {
     <ResourceShell>
       <main>
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbs) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(resourceCollectionJsonLd(`/resources/${category.slug}`, category.seoTitle, category.description, categoryArticles)) }} />
         <section className="category-hero">
           <Breadcrumbs items={[{ label: "Resources", href: "/resources" }, { label: category.name }]} />
           <div className="category-hero-copy"><p className="resource-eyebrow">RESOURCE TOPIC</p><h1>{category.name}</h1><p>{category.description}</p></div>

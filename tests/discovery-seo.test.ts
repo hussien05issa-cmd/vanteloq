@@ -42,7 +42,7 @@ test("empty resource topics are noindexed and absent from the hub and sitemap", 
   for (const category of RESOURCE_CATEGORIES) {
     const populated = getArticlesByCategory(category.slug).length > 0;
     const metadata = await generateMetadata({ params: Promise.resolve({ segment: category.slug }) });
-    assert.equal(typeof metadata.robots === "object" ? metadata.robots?.index : undefined, populated ? undefined : false);
+    assert.equal(typeof metadata.robots === "object" ? metadata.robots?.index : undefined, populated);
     assert.equal(urls.has(absoluteUrl(`/resources/${category.slug}`)), populated, category.slug);
     assert.equal(hub.includes(`href="/resources/${category.slug}"`), populated, category.slug);
   }

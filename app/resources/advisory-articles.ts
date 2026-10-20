@@ -103,7 +103,7 @@ export const ADVISORY_RESOURCE_ARTICLES: readonly ResourceArticle[] = [
   {
     "slug": "customer-acquisition-cost-and-lifetime-value",
     "title": "How to Calculate Customer Acquisition Cost and Lifetime Value",
-    "seoTitle": "Customer Acquisition Cost and LTV: How to Calculate Them",
+    "seoTitle": "Customer Acquisition Cost (CAC) and Lifetime Value (LTV) | Vanteloq",
     "description": "Calculate customer acquisition cost and lifetime value with consistent definitions, gross margin, payback timing and practical cohort analysis.",
     "dek": "Customer acquisition cost and lifetime value are useful only when the business defines the customer, costs, margin and measurement period consistently.",
     "quickAnswer": "Customer acquisition cost, or CAC, is the sales and marketing cost required to acquire new customers during a period, divided by the number of new customers acquired. Customer lifetime value, often called CLV or LTV, estimates the gross profit a customer produces across the relationship. Use gross profit rather than revenue when comparing LTV with CAC. Calculate both by customer cohort and channel, include the people and technology costs used to acquire customers, and track the time required to recover the acquisition cost.",
@@ -376,7 +376,7 @@ export const ADVISORY_RESOURCE_ARTICLES: readonly ResourceArticle[] = [
   {
     "slug": "improve-website-conversion-rate",
     "title": "How to Improve Your Website Conversion Rate",
-    "seoTitle": "How to Improve Website Conversion Rate",
+    "seoTitle": "Conversion Rate Optimization for Small Business | Vanteloq",
     "description": "Improve website conversion by clarifying the offer, strengthening proof, reducing friction, measuring the full journey and testing meaningful changes.",
     "dek": "Conversion improves when the right visitor quickly understands the value, trusts the evidence and can take the next step without unnecessary effort.",
     "quickAnswer": "Conversion rate optimization (CRO) starts with diagnosing where qualified visitors stop, clarifying the promise above the fold, placing relevant proof near the decision, simplifying forms and making the next step specific. Measure the complete path from landing page to confirmed outcome, including follow up. Test one meaningful hypothesis at a time and judge success by qualified leads, purchases or booked meetings, not clicks alone. A higher conversion rate is useful only when customer quality and economics remain healthy.",
@@ -469,7 +469,7 @@ export const ADVISORY_RESOURCE_ARTICLES: readonly ResourceArticle[] = [
   {
     "slug": "marketing-channels-that-are-working",
     "title": "How to Know Which Marketing Channels Are Working",
-    "seoTitle": "How to Measure Which Marketing Channels Work",
+    "seoTitle": "Marketing Attribution: Measure Which Channels Work | Vanteloq",
     "description": "Evaluate marketing channels with clear outcomes, reliable tracking, attribution context, customer economics and practical investment decisions.",
     "dek": "A marketing channel is working when it creates the intended customer behaviour at acceptable economics and contributes to durable commercial results.",
     "quickAnswer": "Give every marketing channel a defined role and business outcome. Use consistent campaign tracking, record qualified leads or revenue in the system of record, and connect spend with customer acquisition cost, gross profit and payback period. Use attribution reports to understand the path, but do not treat a platform's claimed credit as proof of incrementality. Compare channel cohorts for quality and retention, then use clear decision rules to continue, improve, expand or stop the investment.",
